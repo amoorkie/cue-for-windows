@@ -10,17 +10,20 @@ const MODES = {
   // One-shot "do the smart thing". Uses screen + recent transcript.
   assist: {
     needsScreen: true,
+    screenOptional: true,
     userBubble: null,
     small: false,
     system:
       'You are cue, a discreet real-time copilot overlaid on the user\'s screen during a call or coding session. ' +
-      'Look at the screenshot and the recent conversation, decide what the user needs RIGHT NOW, and deliver it directly with no preamble. ' +
+      'Use the screenshot when available together with the recent conversation, decide what the user needs RIGHT NOW, and deliver it directly with no preamble. ' +
       'If the screen shows a coding/LeetCode problem: give a short approach, then a correct solution in a fenced code block, then time and space complexity. ' +
       'If it is a conversation: answer the current question or say exactly what the user should say next, in the first person. ' +
+      'Only answer when the latest Them line asks a question, requests a decision, raises an objection, or clearly needs a reply. ' +
+      'If no response is needed, return exactly NO_ACTION. Do not invent missing context or react to background audio. ' +
       'Be concise and confident. Never say "I can see" or describe the screenshot.',
     build(ctx) {
-      const t = formatTranscript(ctx.transcript, 12);
-      return 'Recent conversation:\n' + (t || '(none)') + '\n\nRespond with what I need right now.';
+      const t = formatTranscript(ctx.transcript, 8);
+      return 'Recent conversation:\n' + (t || '(none)') + '\n\nThe latest Them line is the current trigger. Respond with one useful next step or reply for me, without summarizing. If it is not a direct question or request to me, return exactly NO_ACTION.';
     }
   },
 
@@ -28,6 +31,7 @@ const MODES = {
   say: {
     needsScreen: false,
     userBubble: 'What should I say?',
+    userBubbleRu: 'Что ответить?',
     small: false,
     system:
       'You are cue, whispering suggested replies to the user during a live conversation. ' +
@@ -44,6 +48,7 @@ const MODES = {
   followup: {
     needsScreen: false,
     userBubble: 'Follow-up questions',
+    userBubbleRu: 'Что спросить дальше?',
     small: true,
     system:
       'You are cue. Given the conversation, suggest 2–4 sharp, relevant follow-up questions the user could ask next ' +
@@ -56,12 +61,16 @@ const MODES = {
 
   // Recap of the whole session.
   recap: {
-    needsScreen: false,
-    userBubble: 'Recap',
+    needsScreen: true,
+    screenOptional: true,
+    userBubble: 'Итог созвона',
+    userBubbleRu: 'Итог созвона',
     small: true,
     system:
-      'You are cue. Summarize the conversation so far for someone who joined late: ' +
-      'a few key points, any decisions, and action items. Use short bullets under bold headers. Be brief.',
+      'You are cue. Summarize the conversation so far for someone who joined late. ' +
+      'Start with one concise Markdown H1 title that captures the main topic of the conversation. ' +
+      'Use the screenshot when available to include visible slides, code, documents, or decisions that were shown. ' +
+      'Then give a few key points, any decisions, and action items using short bullets under bold headers. Be brief.',
     build(ctx) {
       const t = formatTranscript(ctx.transcript, 0);
       return 'Full transcript:\n' + (t || '(nothing captured yet)') + '\n\nRecap this.';
@@ -71,6 +80,7 @@ const MODES = {
   // Free-form question typed in the composer. All three inputs as context.
   ask: {
     needsScreen: true,
+    screenOptional: true,
     userBubble: null, // uses the typed text as the bubble
     small: false,
     system:

@@ -14,6 +14,7 @@
   --bd-strong: rgba(255,255,255,0.20);
   --fill-1: rgba(255,255,255,0.04);
   --fill-2: rgba(255,255,255,0.06);
+  --glass-bg: rgba(20,22,28,0.72);
 
   --r-panel: 24px;
   --r-16: 16px;
@@ -28,6 +29,13 @@
 }
 
 * { box-sizing: border-box; }
+
+/* A small, quiet scrollbar keeps the overlay tidy without the platform-default gutter. */
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.24) transparent; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.24); border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.42); background-clip: padding-box; }
 
 html, body {
   margin: 0;
@@ -55,7 +63,8 @@ html, body {
   pointer-events: none;                  /* only the actual UI blocks; gaps pass through */
 }
 #toolbar, #panel-wrap, #settings-scrim, #onboard-scrim { pointer-events: auto; }
-#toolbar { -webkit-app-region: drag; }   /* the pill is the window's drag handle */
+#toolbar { -webkit-app-region: no-drag; }   /* toggled by the appearance setting */
+#app.drag-enabled #toolbar { -webkit-app-region: drag; }
 .no-drag, button, input, textarea { -webkit-app-region: no-drag; }
 
 /* ============================ Toolbar pill ============================ */
@@ -65,7 +74,7 @@ html, body {
   gap: 4px;
   padding: 5px 6px;
   border-radius: var(--r-pill);
-  background: rgba(28,30,38,0.85);
+  background: var(--glass-bg);
   border: 1px solid rgba(255,255,255,0.14);
   box-shadow: 0 8px 24px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.08);
   backdrop-filter: blur(24px) saturate(160%);
@@ -79,24 +88,31 @@ html, body {
 .tb-hide:hover { background: rgba(255,255,255,0.08); }
 .tb-hide .chev { width: 14px; height: 14px; display: inline-flex; color: rgba(255,255,255,0.9); }
 .tb-hide.collapsed .chev { transform: rotate(180deg); }
+.capture-control { position: relative; display: inline-flex; width: 28px; height: 28px; }
 .tb-stop { width: 28px; height: 28px; border-radius: var(--r-8); color: #fff; }
 .tb-stop:hover { background: rgba(255,255,255,0.08); }
 .tb-stop.active { color: #ff6b6b; }
+.tb-stop.capture-warning { color: #fbbf24; }
+#live-dot {
+  position: absolute; top: -2px; right: -2px; z-index: 2;
+  width: 8px; height: 8px; border: 1.5px solid rgba(20,22,28,0.92); border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.20), 0 0 8px rgba(34,197,94,0.7);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease, background 140ms ease;
+  animation: pulse 2s infinite;
+}
+#live-dot.off { opacity: 0; transform: scale(0.55); box-shadow: none; animation: none; }
+#live-dot.starting, #live-dot.warning { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.20), 0 0 8px rgba(245,158,11,0.65); }
+#live-dot.starting { animation: pulseWarning 1.2s infinite; }
+#live-dot.warning { animation: none; }
 
 /* ============================ Panel ============================ */
 #panel-wrap { position: relative; margin-top: 12px; width: min(624px, 94vw); }
 button:focus { outline: none; }
-#live-dot {
-  position: absolute; top: -3px; left: -5px; z-index: 4;
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--live);
-  box-shadow: 0 0 0 3px rgba(34,197,94,0.25), 0 0 8px rgba(34,197,94,0.6);
-  animation: pulse 2s infinite;
-}
-#live-dot.off { background: rgba(255,255,255,0.28); box-shadow: none; animation: none; }
 
 .glass {
-  background: rgba(20,22,28,0.72);
+  background: var(--glass-bg);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   backdrop-filter: blur(40px) saturate(180%);
   border: 1px solid var(--bd-hair);
@@ -106,8 +122,27 @@ button:focus { outline: none; }
 #panel { padding: 20px 22px; animation: overlayIn 260ms cubic-bezier(0.22,1,0.36,1); }
 #panel.collapsed { display: none; }
 
+/* ============================ Live meeting ============================ */
+.view-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 20px; }
+.view-title { color: var(--tx-2); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+#transcript-count, #assist-state { color: var(--tx-mut); font-size: 11px; white-space: nowrap; }
+#live-view { border-bottom: 1px solid rgba(255,255,255,0.10); padding-bottom: 12px; }
+#live-transcript { display: flex; flex-direction: column; gap: 8px; min-height: 72px; max-height: 184px; margin-top: 8px; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
+#live-transcript:empty::before { content: 'Включите запись, чтобы видеть разговор в реальном времени'; color: var(--tx-mut); font-size: 13px; line-height: 1.45; padding: 12px 2px 6px; }
+.transcript-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start; padding: 7px 9px; border-left: 2px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.035); border-radius: 0 8px 8px 0; animation: fadeUp 160ms ease both; }
+.transcript-row.you { border-left-color: rgba(74,141,247,0.85); }
+.transcript-row.them { border-left-color: rgba(34,197,94,0.80); }
+.transcript-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.transcript-speaker { color: var(--tx-2); font-size: 12px; font-weight: 650; }
+.transcript-source { color: var(--tx-mut); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.transcript-time { color: var(--tx-mut); font-size: 10px; font-variant-numeric: tabular-nums; }
+.transcript-text { color: var(--tx-1); font-size: 13px; line-height: 1.42; -webkit-user-select: text; user-select: text; overflow-wrap: anywhere; }
+#answer-view { padding-top: 12px; }
+#answer-view .view-head { margin-bottom: 4px; }
+
 /* ============================ Messages ============================ */
-#messages { display: flex; flex-direction: column; overflow-y: auto; max-height: 50vh; }
+#messages { display: flex; flex-direction: column; overflow-y: auto; min-height: 68px; max-height: 184px; padding: 0 2px; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.answer-label { color: #8ab8ff; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin: 10px 0 0; }
 .user-bubble {
   align-self: flex-end;
   max-width: 75%;
@@ -162,6 +197,7 @@ button:focus { outline: none; }
 }
 .act .ic { display: inline-flex; color: var(--ic); }
 .act:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.act.active { color: #fff; background: rgba(72, 139, 255, 0.18); box-shadow: 0 0 0 1px rgba(72, 139, 255, 0.28); }
 .act:active { transform: translateY(0.5px); }
 .act:disabled { opacity: 0.5; cursor: default; }
 .sep { color: rgba(255,255,255,0.35); font-size: 14px; margin: 0 2px; }
@@ -238,11 +274,11 @@ button:focus { outline: none; }
   background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
 }
 #settings-scrim.hidden { display: none; }
-#settings { width: min(440px, 92vw); padding: 18px 20px; -webkit-app-region: no-drag; }
+#settings { width: min(470px, 94vw); max-height: calc(100vh - 28px); padding: 18px 20px; -webkit-app-region: no-drag; display: flex; flex-direction: column; }
 .s-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .s-title { font-size: 17px; font-weight: 600; color: var(--tx-1); }
 .s-close { border: none; background: var(--accent); color: #fff; font-weight: 600; font-size: 13px; padding: 6px 14px; border-radius: var(--r-pill); cursor: pointer; }
-.s-body { display: flex; flex-direction: column; gap: 8px; }
+.s-body { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 4px; }
 .s-label { color: var(--tx-2); font-size: 13px; font-weight: 600; margin-top: 8px; }
 .s-hint { color: var(--tx-mut); font-weight: 400; font-size: 11px; margin-left: 6px; }
 .s-seg { display: flex; gap: 6px; }
@@ -251,7 +287,21 @@ button:focus { outline: none; }
 .s-field { display: flex; align-items: center; gap: 10px; }
 .s-field span { width: 78px; color: var(--tx-mut); font-size: 12px; }
 .s-field input { flex: 1; padding: 8px 10px; border-radius: var(--r-8); border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); color: var(--tx-1); font-size: 13px; font-family: var(--font); outline: none; }
+.s-field select { flex: 1; min-width: 0; padding: 8px 10px; border-radius: var(--r-8); border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); color: var(--tx-1); font-size: 13px; font-family: var(--font); outline: none; }
+.s-field select:focus { border-color: var(--accent); }
+.s-field input[type="color"] { flex: 0 0 52px; height: 32px; padding: 3px; cursor: pointer; }
+.s-field input[type="range"] { padding: 0; accent-color: var(--accent); cursor: pointer; }
+.s-range-field output { width: 42px; color: var(--tx-2); text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
 .s-field input:focus { border-color: var(--accent); }
+.s-field input.invalid { border-color: #f59e0b; }
+.s-endpoint-note { color: var(--tx-mut); font-size: 11px; line-height: 1.35; min-height: 15px; padding-left: 88px; }
+.s-endpoint-note.custom { color: #fbbf24; }
+.s-endpoint-note.error { color: #ff8a8a; }
+.s-check { display: flex; align-items: center; gap: 8px; padding-left: 88px; color: var(--tx-mut); font-size: 11px; line-height: 1.35; }
+.s-check input { accent-color: var(--accent); }
+.s-check span { flex: 1; }
+#stt-route-group { display: flex; flex-direction: column; gap: 8px; }
+#stt-route-group.disabled .s-field, #stt-route-group.disabled .s-endpoint-note, #stt-route-group.disabled #stt-trust-row { opacity: 0.45; pointer-events: none; }
 .s-status { color: var(--tx-mut); font-size: 12px; margin-top: 10px; min-height: 16px; }
 
 /* ============================ Onboarding / tutorial ============================ */
@@ -282,6 +332,7 @@ button:focus { outline: none; }
 /* ============================ Animations ============================ */
 @keyframes overlayIn { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.25), 0 0 8px rgba(34,197,94,0.6); } 50% { box-shadow: 0 0 0 6px rgba(34,197,94,0), 0 0 8px rgba(34,197,94,0.3); } }
+@keyframes pulseWarning { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 @keyframes blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
 

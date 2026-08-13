@@ -2,21 +2,26 @@
 // no audio API — we transcribe with whatever audio-capable key is available, and
 // fall back across providers. Returns { text, provider } or { text:'', error }.
 const { pcmToWav } = require('./wav');
+const { normalizeBaseURL, resolveBaseURL, STT_PROVIDERS } = require('./endpoints');
 
-async function transcribeOpenAI(apiKey, wav, model) {
+async function transcribeOpenAI(apiKey, wav, model, baseURL, authMode) {
   const OpenAI = require('openai');
   const toFile = OpenAI.toFile || require('openai/uploads').toFile;
-  const client = new OpenAI({ apiKey });
+  const client = new OpenAI({
+    apiKey: apiKey || 'local-api-key',
+    baseURL,
+    defaultHeaders: authMode === 'none' ? { Authorization: null } : undefined
+  });
   const file = await toFile(wav, 'audio.wav', { type: 'audio/wav' });
   const res = await client.audio.transcriptions.create({ file, model: model || 'whisper-1' });
   return (res.text || '').trim();
 }
 
-async function transcribeGemini(apiKey, wav) {
+async function transcribeGemini(apiKey, wav, model, baseURL) {
   const { GoogleGenAI } = require('@google/genai');
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey, httpOptions: { baseUrl: baseURL } });
   const res = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model,
     contents: [{ role: 'user', parts: [
       { text: 'Transcribe this audio verbatim. Return only the spoken words with no commentary. If there is no clear speech, return an empty response.' },
       { inlineData: { mimeType: 'audio/wav', data: wav.toString('base64') } }
@@ -25,14 +30,74 @@ async function transcribeGemini(apiKey, wav) {
   return ((res && res.text) || '').trim();
 }
 
+async function transcribeCompatibleChat(apiKey, wav, model, baseURL, authMode) {
+  const OpenAI = require('openai');
+  const client = new OpenAI({
+    apiKey: apiKey || 'local-api-key',
+    baseURL,
+    defaultHeaders: authMode === 'none' ? { Authorization: null } : undefined
+  });
+  const res = await client.chat.completions.create({
+    model,
+    messages: [{ role: 'user', content: [
+      { type: 'text', text: 'Transcribe this audio verbatim. Return only clearly spoken words, with no commentary or completion. If the audio is silence, noise, music, an echo, or unclear, return an empty response. Never invent or guess words.' },
+      { type: 'input_audio', input_audio: { data: wav.toString('base64'), format: 'wav' } }
+    ] }],
+    max_tokens: 900,
+    temperature: 0
+  });
+  const message = res && res.choices && res.choices[0] && res.choices[0].message;
+  const content = message && message.content;
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) return content.map((part) => typeof part === 'string' ? part : part && (part.text || part.content) || '').join('').trim();
+  return '';
+}
+
 function createSTT(settings) {
   const keys = settings.apiKeys || {};
+  const sttKeys = settings.sttApiKeys || {};
   const chain = [];
-  if (keys.openai) chain.push({ p: 'openai', fn: (wav) => transcribeOpenAI(keys.openai, wav, settings.sttModel) });
-  if (keys.gemini) chain.push({ p: 'gemini', fn: (wav) => transcribeGemini(keys.gemini, wav) });
+  const configurationErrors = [];
+  const routes = settings.stt && settings.stt.routes ? settings.stt.routes : {};
+
+  for (const provider of STT_PROVIDERS) {
+    const route = routes[provider] || {};
+    if (!route.enabled) continue;
+    const authMode = provider === 'compatible' && route.authMode === 'none' ? 'none' : 'bearer';
+    if (!route.model) {
+      configurationErrors.push(provider + ' transcription model is not set.');
+      continue;
+    }
+    try {
+      const baseURL = resolveBaseURL(provider, settings, 'stt');
+      if (route.baseUrl) {
+        const trusted = normalizeBaseURL(route.trustedBaseUrl);
+        if (trusted !== baseURL) throw new Error('custom transcription endpoint has not been trusted.');
+      }
+      const chatUsesCustomDestination = !!(settings.baseUrls && settings.baseUrls[provider]);
+      const canReuseProviderKey = !route.baseUrl && !chatUsesCustomDestination;
+      const apiKey = sttKeys[provider] || (canReuseProviderKey ? keys[provider] : '');
+      if (!apiKey && authMode !== 'none') {
+        if (route.baseUrl || chatUsesCustomDestination) {
+          configurationErrors.push(provider + ': set a separate transcription API key for this route.');
+        }
+        continue;
+      }
+      if (provider === 'gemini') {
+        chain.push({ p: provider, fn: (wav) => transcribeGemini(apiKey, wav, route.model, baseURL) });
+      } else if (provider === 'compatible' && route.protocol === 'chat-audio') {
+        chain.push({ p: provider, fn: (wav) => transcribeCompatibleChat(apiKey, wav, route.model, baseURL, authMode) });
+      } else {
+        chain.push({ p: provider, fn: (wav) => transcribeOpenAI(apiKey, wav, route.model, baseURL, authMode) });
+      }
+    } catch (error) {
+      configurationErrors.push(provider + ': ' + error.message);
+    }
+  }
 
   return {
     available: chain.length > 0,
+    error: configurationErrors[0] || null,
     providers: chain.map((c) => c.p),
     async transcribe(pcm) {
       if (!chain.length || !pcm || pcm.length < 3200) return { text: '' };

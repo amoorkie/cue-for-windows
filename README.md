@@ -1,8 +1,8 @@
 <div align="center">
 
-# cue
+# cue for Windows
 
-**An open-source AI copilot that floats over your screen — sees what you see, hears your meetings, and stays hidden from screen shares.**
+**An open-source Windows AI copilot that floats over your screen — sees what you see, hears your meetings, and stays hidden from compatible screen shares.**
 
 A free, self-hosted alternative to Cluely. Bring your own AI key (OpenAI · Anthropic · Google Gemini).
 
@@ -25,6 +25,8 @@ A free, self-hosted alternative to Cluely. Bring your own AI key (OpenAI · Anth
 
 cue floats a small glass panel on top of everything. It takes **three separate inputs** — your **screen**, your **microphone**, and your **meeting audio** (what the other person says) — and uses an AI model to help you in real time.
 
+Во время записи в панели доступен живой конспект с каналами «Вы» и «Собеседник». При включённой «Помощи» cue автоматически отвечает только на реплики, которые действительно требуют ответа; служебный ответ `NO_ACTION` скрывается. На Windows cue запускается вместе с системой, а после остановки записи итог с учётом финального снимка экрана сохраняется в `A:\Cue Documents\*.md` и открывается системным Markdown-ридером.
+
 | Feature | How to trigger | What it uses |
 |---|---|---|
 | **Assist** | `⌘` `↵` or the *Assist* button | your screen + recent conversation |
@@ -41,7 +43,24 @@ It's a copilot for **live meetings** ("what do I say to that?") and **coding pro
 
 ## Install
 
-There are two ways to install cue. **If you're not a developer, use Option A.**
+### Windows 10 (2004+) and Windows 11
+
+Download the latest installer from [Releases](../../releases), run `cue-0.1.0-windows-x64.exe`, and follow the setup wizard. The installer is currently unsigned, so Windows may show a SmartScreen warning.
+
+To run from source:
+
+```powershell
+git clone https://github.com/amoorkie/cue-for-windows.git
+Set-Location cue-for-windows
+npm ci
+npm start
+```
+
+Build the installer with `npm run dist:win`. The result is written to `dist\cue-<version>-windows-<arch>.exe`. See the full [Windows setup and troubleshooting guide](docs/WINDOWS.md).
+
+### macOS
+
+There are two ways to install cue on macOS. **If you're not a developer, use Option A.**
 
 ### Option A — Download the app (easiest)
 
@@ -63,8 +82,8 @@ After that, cue opens normally forever.
 You need [Node.js](https://nodejs.org) 18+ installed. No Xcode required.
 
 ```bash
-git clone https://github.com/Blueturboguy07/cue.git
-cd cue
+git clone https://github.com/amoorkie/cue-for-windows.git
+cd cue-for-windows
 npm install
 npm start
 ```
@@ -97,8 +116,12 @@ cue uses **your own** API key, so it's free to run (you only pay your AI provide
 | **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | One key does everything — **but** for the *listening* features the key must have **Whisper / audio** access (a "restricted" project key that only allows chat will give a 403 on transcription). |
 | **Anthropic (Claude)** | [console.anthropic.com](https://console.anthropic.com) | Great for screen & coding help. Claude has no speech-to-text, so add an OpenAI or Gemini key too if you want the listening features. |
 | **Google Gemini** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | One key does chat + transcription. |
+| **NVIDIA NIM** | [build.nvidia.com](https://build.nvidia.com/) | Uses NVIDIA's OpenAI-compatible endpoint for chat and vision models. |
+| **Custom** | Your gateway or local server | Any standard OpenAI Chat Completions endpoint, including OpenRouter, LM Studio, Ollama, and vLLM. Model vision support is required for screen features. |
 
-Your key is stored **only on your computer** (in `cue-data.json`) and is sent **only** to that provider. cue has no server and collects nothing.
+Each provider can use an optional custom **Base URL**. Chat and speech-to-text routes — including their credentials and authentication modes — are configured separately, and cue requires explicit confirmation before trusting a custom destination. Blank fields always use fixed official provider URLs. HTTP is accepted only for same-computer loopback endpoints; LAN and public endpoints must use HTTPS.
+
+Your key is stored **only on your computer** (in `cue-data.json`) and is sent only to the official provider or custom destination you explicitly selected and trusted. cue has no server and collects nothing.
 
 ### Step 3 — The Zoom setting (only needed for Zoom)
 
@@ -116,7 +139,7 @@ cue is hidden from most screen-share tools automatically — **Google Meet, Micr
 
 - **`⌘` `↵` — Assist.** The do-the-smart-thing key. On a coding problem it solves it; in a conversation it tells you what to say. Works from anywhere.
 - **`⌘` `H` — Solve what's on screen.** Screenshots a coding problem and returns the approach, code, and time/space complexity.
-- **The `▢` button** (top bar) — start/stop **listening** to a meeting. The green dot means it's live.
+- **The Play button** (top bar) starts listening and changes to Stop. A green dot beside it means both audio inputs are live; amber means cue is still connecting or one input failed.
 - **Type a question** in the box and press `↵` to ask about your screen or conversation.
 - **Smart** — flip it on for a smarter, more thorough model; off for fast and cheap.
 - **Hide** collapses the panel to just the top bar. Drag cue around by the **top pill**. Quit with `⌘` `⇧` `X`.
@@ -136,7 +159,7 @@ cue is an [Electron](https://www.electronjs.org/) app. Everything runs locally e
 
 Both audio streams are transcribed (OpenAI Whisper or Gemini) and fed, with an optional screenshot, to your AI model. Responses **stream** into the panel word-by-word.
 
-**The invisibility** is a single macOS window flag: `setContentProtection(true)`, which sets `NSWindowSharingNone`. This asks the window server to exclude cue from screen-capture streams. It's the same mechanism DRM apps and Zoom's own toolbar use. It is **not** a GPU trick or a special overlay layer — and on macOS 15.4+ Apple lets some capture tools ignore it, which is why it's best-effort (see the disclaimer at the top).
+**The invisibility** is enabled with Electron's `setContentProtection(true)`. On macOS this sets `NSWindowSharingNone`; on Windows 10 2004+ and Windows 11 it maps to `WDA_EXCLUDEFROMCAPTURE`. This asks the OS to exclude cue from compatible capture streams. It is **best-effort, not a guarantee**, so test the exact screen-sharing application and capture mode before relying on it.
 
 ```
 main process ──┬─ overlay window (frameless, transparent, always-on-top, content-protected)
@@ -170,8 +193,8 @@ Run `xattr -cr /Applications/cue.app` in Terminal once (see Install → Option A
 ## Privacy
 
 - No accounts, no servers, no telemetry. cue collects nothing.
-- Your API keys live in a local file (`cue-data.json`) and are sent only to the provider you chose.
-- Screenshots and audio are sent to your AI provider only when a feature runs, and are not stored by cue beyond the current session's transcript (kept in memory).
+- Your API keys live in a local file (`cue-data.json`) and are sent only to the official provider or custom destination you explicitly selected and trusted.
+- Screenshots and audio are sent to the configured LLM/STT destinations only when a feature runs, and are not stored by cue beyond the current session's transcript (kept in memory).
 
 ## Contributing
 

@@ -12,25 +12,41 @@
     <div id="toolbar">
       <button class="tb-logo" id="logo-btn" title="cue"></button>
       <div class="tb-divider"></div>
-      <button class="tb-hide" id="hide-btn"><span class="chev"></span><span>Hide</span></button>
+      <button class="tb-hide" id="hide-btn"><span class="chev"></span><span data-i18n="hide">Hide</span></button>
       <div class="tb-divider"></div>
-      <button class="tb-stop" id="stop-btn" title="Start / stop listening"></button>
+      <div class="capture-control">
+        <button class="tb-stop" id="stop-btn" title="Start recording" aria-label="Start recording" aria-pressed="false"></button>
+        <span id="live-dot" class="off" aria-hidden="true"></span>
+      </div>
     </div>
 
     <!-- Main assistant panel -->
     <div id="panel-wrap">
-      <span id="live-dot" class="off"></span>
       <div id="panel" class="glass no-drag">
-        <div id="messages"></div>
+        <section id="live-view" aria-label="Живой конспект созвона">
+          <div class="view-head">
+            <span class="view-title" data-i18n="liveTranscript">Живой конспект</span>
+            <span id="transcript-count">Нет реплик</span>
+          </div>
+          <div id="live-transcript" role="log" aria-live="polite"></div>
+        </section>
+
+        <section id="answer-view" aria-label="Подсказки Cue">
+          <div class="view-head">
+            <span class="view-title" data-i18n="hints">Подсказки</span>
+            <span id="assist-state">Готово</span>
+          </div>
+          <div id="messages"></div>
+        </section>
 
         <div id="action-row">
-          <button class="act" data-mode="assist"><span class="ic"></span><span>Assist</span></button>
+          <button class="act" data-mode="assist"><span class="ic"></span><span data-i18n="assist">Помощь</span></button>
           <span class="sep">•</span>
-          <button class="act" data-mode="say"><span class="ic"></span><span>What should I say?</span></button>
+          <button class="act" data-mode="say"><span class="ic"></span><span data-i18n="say">Что сказать?</span></button>
           <span class="sep">•</span>
-          <button class="act" data-mode="followup"><span class="ic"></span><span>Follow-up questions</span></button>
+          <button class="act" data-mode="followup"><span class="ic"></span><span data-i18n="followup">Уточняющие вопросы</span></button>
           <span class="sep">•</span>
-          <button class="act" data-mode="recap"><span class="ic"></span><span>Recap</span></button>
+          <button class="act" data-mode="recap"><span class="ic"></span><span data-i18n="recap">Итоги</span></button>
         </div>
 
         <div id="composer">
@@ -39,7 +55,8 @@
             <textarea id="input" rows="1" spellcheck="false"></textarea>
           </div>
           <div id="composer-bottom">
-            <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Smart</span></button>
+            <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span data-i18n="smart">Smart</span></button>
+            <button id="copy-btn" class="more-btn" title="Copy messages" aria-label="Copy messages"></button>
             <button id="more-btn" class="more-btn" title="Settings"></button>
             <button id="zoom-out-btn" class="more-btn" title="Zoom Out" style="font-size: 18px; font-family: monospace; line-height: 1;">-</button>
             <button id="zoom-in-btn" class="more-btn" title="Zoom In" style="font-size: 16px; font-family: monospace; line-height: 1;">+</button>
@@ -55,27 +72,53 @@
   <div id="settings-scrim" class="hidden">
     <div id="settings" class="glass">
       <div class="s-head">
-        <div class="s-title">Settings</div>
-        <button id="s-close" class="s-close">Done</button>
+        <div class="s-title" data-i18n="settings">Settings</div>
+        <button id="s-close" class="s-close" data-i18n="done">Done</button>
       </div>
       <div class="s-body">
-        <label class="s-label">Provider</label>
+        <label class="s-label" data-i18n="provider">Provider</label>
         <div class="s-seg" id="provider-seg">
-          <button data-provider="openai">OpenAI</button>
+          <button data-provider="openai" title="OpenAI or an OpenAI-compatible API">OpenAI</button>
           <button data-provider="anthropic">Anthropic</button>
           <button data-provider="gemini">Gemini</button>
           <button data-provider="nvidia">Nvidia</button>
+          <button data-provider="compatible" title="OpenAI-compatible API">Custom</button>
         </div>
 
-        <label class="s-label">API keys <span class="s-hint">stored locally in cue-data.json</span></label>
+        <label class="s-label"><span data-i18n="apiEndpoint">API endpoint</span> <span class="s-hint" data-i18n="officialHint">leave blank for the official API</span></label>
+        <div class="s-field"><span data-i18n="baseUrl">Base URL</span><input id="base-url" type="url" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" /></div>
+        <div class="s-endpoint-note" id="endpoint-note"></div>
+        <label class="s-check hidden" id="endpoint-trust-row"><input id="endpoint-trust" type="checkbox" /><span data-i18n="trustApi">I trust this destination for API requests</span></label>
+        <label class="s-check hidden" id="auth-mode-row"><input id="send-auth" type="checkbox" checked /><span data-i18n="sendBearer">Send API key as a Bearer token</span></label>
+
+        <label class="s-label"><span data-i18n="apiKeys">API keys</span> <span class="s-hint" data-i18n="storedLocally">stored locally in cue-data.json</span></label>
         <div class="s-field"><span>OpenAI</span><input id="key-openai" type="password" placeholder="sk-..." autocomplete="off" /></div>
         <div class="s-field"><span>Anthropic</span><input id="key-anthropic" type="password" placeholder="sk-ant-..." autocomplete="off" /></div>
         <div class="s-field"><span>Gemini</span><input id="key-gemini" type="password" placeholder="AIza..." autocomplete="off" /></div>
         <div class="s-field"><span>Nvidia</span><input id="key-nvidia" type="password" placeholder="nvapi-..." autocomplete="off" /></div>
+        <div class="s-field"><span>Custom</span><input id="key-compatible" type="password" placeholder="optional with no auth" autocomplete="off" /></div>
 
         <label class="s-label">Models <span class="s-hint">fast = Smart off · smart = Smart on</span></label>
-        <div class="s-field"><span>Fast</span><input id="model-fast" type="text" autocomplete="off" /></div>
-        <div class="s-field"><span>Smart</span><input id="model-smart" type="text" autocomplete="off" /></div>
+        <div class="s-field"><span data-i18n="fastModel">Fast</span><input id="model-fast" type="text" autocomplete="off" /></div>
+        <div class="s-field"><span data-i18n="smartModel">Smart</span><input id="model-smart" type="text" autocomplete="off" /></div>
+
+        <div id="stt-route-group">
+          <label class="s-label"><span data-i18n="transcription">Transcription route</span> <span class="s-hint" data-i18n="separateFromChat">separate from chat</span></label>
+          <label class="s-check"><input id="stt-enabled" type="checkbox" /><span data-i18n="useForSpeech">Use this provider for speech-to-text</span></label>
+          <div class="s-field"><span data-i18n="sttKey">STT key</span><input id="stt-api-key" type="password" placeholder="optional for official API" autocomplete="off" /></div>
+          <label class="s-check hidden" id="stt-auth-mode-row"><input id="stt-send-auth" type="checkbox" checked /><span data-i18n="sendSttBearer">Send STT key as a Bearer token</span></label>
+          <div class="s-field hidden" id="stt-protocol-field"><span data-i18n="sttProtocol">STT protocol</span><select id="stt-protocol"><option value="transcriptions">/audio/transcriptions</option><option value="chat-audio">Chat audio (Gemini)</option></select></div>
+          <div class="s-field"><span data-i18n="sttModel">STT model</span><input id="stt-model" type="text" autocomplete="off" /></div>
+          <div class="s-field"><span data-i18n="sttUrl">STT URL</span><input id="stt-base-url" type="url" autocomplete="off" spellcheck="false" /></div>
+          <div class="s-endpoint-note" id="stt-endpoint-note"></div>
+          <label class="s-check hidden" id="stt-trust-row"><input id="stt-endpoint-trust" type="checkbox" /><span data-i18n="trustAudio">I trust this destination for API keys and audio</span></label>
+        </div>
+
+        <label class="s-label" data-i18n="appearance">Appearance</label>
+        <div class="s-field"><span data-i18n="language">Language</span><select id="appearance-language"><option value="ru">Русский</option><option value="en">English</option></select></div>
+        <label class="s-check"><input id="appearance-drag" type="checkbox" checked /><span data-i18n="windowDrag">Allow dragging the cue window</span></label>
+        <div class="s-field"><span data-i18n="backgroundColor">Background</span><input id="appearance-color" type="color" value="#14161c" /></div>
+        <div class="s-field s-range-field"><span data-i18n="opacity">Opacity</span><input id="appearance-opacity" type="range" min="20" max="95" step="1" value="72" /><output id="appearance-opacity-value">72%</output></div>
 
         <div class="s-status" id="s-status"></div>
       </div>

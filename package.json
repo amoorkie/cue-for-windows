@@ -1,12 +1,14 @@
 {
   "name": "cue",
   "version": "0.1.0",
-  "description": "Open-source macOS invisible AI overlay — three separate inputs (screen, mic, system audio) into an LLM. A Cluely-style copilot for meetings and coding problems.",
+  "description": "Open-source cross-platform AI overlay with screen, microphone, and system-audio input.",
   "license": "GPL-3.0-or-later",
   "author": "cue",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test test/endpoints.test.js test/recap-export.test.js",
+    "test:ui": "electron test/ui-smoke.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --mac zip",
     "dist:win": "electron-builder --win"
@@ -14,7 +16,7 @@
   "build": {
     "appId": "com.cue.overlay",
     "productName": "cue",
-    "asar": false,
+    "asar": true,
     "files": [
       "main.js",
       "preload.js",
@@ -37,9 +39,17 @@
       }
     },
     "win": {
+      "artifactName": "${productName}-${version}-windows-${arch}.${ext}",
       "target": [
         "nsis"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   },
   "keywords": [
@@ -47,8 +57,9 @@
     "overlay",
     "ai",
     "assistant",
-    "screencapturekit",
-    "macos"
+    "screen-capture",
+    "macos",
+    "windows"
   ],
   "devDependencies": {
     "electron": "33.2.1",
