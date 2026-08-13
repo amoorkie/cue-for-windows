@@ -2,9 +2,13 @@
 
 # cue for Windows
 
-**An open-source Windows AI copilot that floats over your screen — sees what you see, hears your meetings, and stays hidden from compatible screen shares.**
+**Открытый AI-помощник для Windows: видит ваш экран, слышит разговоры и помогает во время созвонов.**
 
-A free, self-hosted alternative to Cluely. Bring your own AI key (OpenAI · Anthropic · Google Gemini).
+Бесплатная self-hosted альтернатива Cluely. Работает с вашим API-ключом OpenAI, Anthropic, Google Gemini, NVIDIA или совместимого сервиса.
+
+### [⬇ Скачать установщик Cue для Windows x64](https://github.com/amoorkie/cue-for-windows/releases/download/v0.1.0/cue-0.1.0-windows-x64.exe)
+
+[Все релизы](https://github.com/amoorkie/cue-for-windows/releases) · Текущая версия: **0.1.0** · Windows 10 (2004+) / Windows 11
 
 <img src="docs/tutorial.png" width="620" alt="cue first-run tutorial" />
 
