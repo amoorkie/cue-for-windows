@@ -14,8 +14,10 @@
   document.querySelector('.act[data-mode="say"] .ic').innerHTML = icon('wand-sparkles', { size: 16 });
   document.querySelector('.act[data-mode="followup"] .ic').innerHTML = icon('message-circle', { size: 16 });
   document.querySelector('.act[data-mode="recap"] .ic').innerHTML = icon('refresh-cw', { size: 16 });
+  $('#finish-raw-btn .ic').innerHTML = icon('save', { size: 16 });
   $('#smart-toggle .ic').innerHTML = icon('zap', { size: 14 });
   $('#copy-btn').innerHTML = icon('copy', { size: 16 });
+  $('#search-btn').innerHTML = icon('search', { size: 16 });
   $('#more-btn').innerHTML = icon('more-horizontal', { size: 18 });
   $('#send-btn').innerHTML = icon('play', { size: 15 });
 
@@ -171,7 +173,7 @@
     meta.className = 'transcript-meta';
     const speaker = document.createElement('span');
     speaker.className = 'transcript-speaker';
-    speaker.textContent = currentLanguage() === 'ru' ? (turn.channel === 'them' ? 'Собеседник' : 'Вы') : (turn.channel === 'them' ? 'Them' : 'You');
+    speaker.textContent = turn.speaker || (currentLanguage() === 'ru' ? (turn.channel === 'them' ? 'Собеседник' : 'Вы') : (turn.channel === 'them' ? 'Them' : 'You'));
     const source = document.createElement('span');
     source.className = 'transcript-source';
     source.textContent = currentLanguage() === 'ru' ? (turn.channel === 'them' ? 'система' : 'микрофон') : (turn.channel === 'them' ? 'system' : 'mic');
@@ -309,6 +311,44 @@
   let captureTogglePending = false;
   let captureWanted = false;
   const captureHealth = { mic: 'idle', system: 'idle' };
+  const captureMetrics = { micBytes: 0, systemBytes: 0, stt: 'idle', disk: 'idle', provider: '' };
+  const usefulAudioAt = { mic: 0, system: 0 };
+  let silenceWarnedAt = 0;
+
+  function formatBytes(value) { return value < 1024 * 1024 ? `${Math.round(value / 1024)} KB` : `${(value / 1024 / 1024).toFixed(1)} MB`; }
+  function setDiag(id, state, text) {
+    const el = $(id);
+    el.className = `diag-pill ${state || 'idle'}`;
+    el.textContent = text;
+  }
+  function renderDiagnostics() {
+    setDiag('#diag-mic', captureHealth.mic, `Микрофон ${formatBytes(captureMetrics.micBytes)}`);
+    setDiag('#diag-system', captureHealth.system, `Система ${formatBytes(captureMetrics.systemBytes)}`);
+    const sttLabels = { idle: 'STT ожидание', working: 'STT обработка', ok: `STT ${captureMetrics.provider || 'готов'}`, error: 'STT ошибка' };
+    const diskLabels = { idle: 'Диск ожидание', ok: 'Диск сохранено', error: 'Диск ошибка' };
+    setDiag('#diag-stt', captureMetrics.stt, sttLabels[captureMetrics.stt] || 'STT');
+    setDiag('#diag-disk', captureMetrics.disk, diskLabels[captureMetrics.disk] || 'Диск');
+  }
+  function pcmRms(arrayBuffer) {
+    const samples = new Int16Array(arrayBuffer);
+    if (!samples.length) return 0;
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
+    return Math.sqrt(sum / samples.length);
+  }
+  function noteAudio(channel, data) {
+    captureMetrics[channel === 'mic' ? 'micBytes' : 'systemBytes'] += data.byteLength || 0;
+    if (pcmRms(data) >= 240) usefulAudioAt[channel] = Date.now();
+    renderDiagnostics();
+  }
+  setInterval(() => {
+    if (!captureWanted) return;
+    const latest = Math.max(usefulAudioAt.mic, usefulAudioAt.system);
+    if (latest && Date.now() - latest < 45000) return;
+    if (Date.now() - silenceWarnedAt < 45000) return;
+    silenceWarnedAt = Date.now();
+    showStatus('Внимание: 45 секунд нет полезного сигнала ни с микрофона, ни из системного звука.');
+  }, 10000);
 
   $('#stop-btn').addEventListener('click', async () => {
     if (captureTogglePending) return;
@@ -335,6 +375,7 @@
     indicator.classList.toggle('starting', captureWanted && !ready && !warning);
     indicator.classList.toggle('warning', warning);
     $('#stop-btn').classList.toggle('capture-warning', warning);
+    renderDiagnostics();
   }
 
   function removeAi() {
@@ -349,6 +390,19 @@
     captureHealth[channel] = value;
     updateCaptureHealth();
   }
+
+  $('#finish-raw-btn').addEventListener('click', async () => {
+    if (captureTogglePending) return;
+    captureTogglePending = true;
+    try {
+      if (captureWanted) { stopMic(); stopSystemAudio(); }
+      await cue.captureFinishRaw();
+    } catch (err) {
+      showStatus('Не удалось сохранить RAW: ' + mediaErrorDetail(err));
+    } finally {
+      captureTogglePending = false;
+    }
+  });
 
   function mediaErrorDetail(err) {
     if (!err) return 'Unknown error.';
@@ -380,7 +434,7 @@
         await ctx.audioWorklet.addModule('./pcm-processor.js');
         node = ctx.createMediaStreamSource(stream);
         proc = new AudioWorkletNode(ctx, 'pcm-processor');
-        proc.port.onmessage = (e) => cue.micPcm(e.data);
+        proc.port.onmessage = (e) => { noteAudio('mic', e.data); cue.micPcm(e.data); };
         const sink = ctx.createGain(); sink.gain.value = 0; // run processor silently
         node.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
         if (!captureWanted) {
@@ -440,7 +494,7 @@
         await ctx.audioWorklet.addModule('./pcm-processor.js');
         node = ctx.createMediaStreamSource(new MediaStream(tracks));
         proc = new AudioWorkletNode(ctx, 'pcm-processor');
-        proc.port.onmessage = (e) => cue.systemPcm(e.data);
+        proc.port.onmessage = (e) => { noteAudio('system', e.data); cue.systemPcm(e.data); };
         const sink = ctx.createGain(); sink.gain.value = 0;
         node.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
         if (!captureWanted) {
@@ -488,10 +542,24 @@
   cue.on('capture:state', ({ active }) => {
     captureWanted = active;
     renderCaptureControl(active);
-    if (active) { void startMic(); void startSystemAudio(); clearMessages(); clearLiveTranscript(); assistStateEl.textContent = t('listening'); } else { stopMic(); stopSystemAudio(); assistStateEl.textContent = t('ready'); }
+    if (active) {
+      captureMetrics.micBytes = 0; captureMetrics.systemBytes = 0; captureMetrics.stt = 'idle'; captureMetrics.disk = 'idle'; captureMetrics.provider = '';
+      usefulAudioAt.mic = Date.now(); usefulAudioAt.system = Date.now(); silenceWarnedAt = 0;
+      void startMic(); void startSystemAudio(); clearMessages(); clearLiveTranscript(); assistStateEl.textContent = t('listening');
+    } else { stopMic(); stopSystemAudio(); assistStateEl.textContent = t('ready'); }
     updateCaptureHealth();
   });
   cue.on('transcript', appendTranscript);
+  cue.on('diagnostics', (data) => {
+    if (data.stt) captureMetrics.stt = data.stt;
+    if (data.disk) captureMetrics.disk = data.disk;
+    if (data.sttProvider) captureMetrics.provider = data.sttProvider;
+    renderDiagnostics();
+  });
+  cue.on('session:loaded', ({ transcript }) => {
+    clearLiveTranscript();
+    for (const turn of transcript || []) appendTranscript(turn);
+  });
   cue.on('llm:start', ({ userBubble, small, append, responseLabel }) => {
     if (!append) clearMessages();
     if (userBubble && !append) addUserBubble(userBubble);
@@ -512,8 +580,8 @@
     if (!el) {
       el = document.createElement('div');
       el.id = 'cue-status';
-      const panel = document.getElementById('panel');
-      panel.insertBefore(el, document.getElementById('action-row'));
+      const actionRow = document.getElementById('action-row');
+      actionRow.parentNode.insertBefore(el, actionRow);
     }
     el.textContent = message;
     el.classList.add('show');
@@ -521,6 +589,76 @@
     statusTimer = setTimeout(() => el.classList.remove('show'), 11000);
   }
   cue.on('status', ({ message }) => { cue.log('[status] ' + message); showStatus(message); });
+
+  function renderRecovery(sessions) {
+    const panel = $('#recovery-panel');
+    const list = $('#recovery-list');
+    const items = Array.isArray(sessions) ? sessions : [];
+    panel.classList.toggle('hidden', items.length === 0);
+    $('#recovery-count').textContent = items.length ? `${items.length} незаверш.` : '';
+    list.innerHTML = '';
+    for (const session of items) {
+      const row = document.createElement('div');
+      row.className = 'recovery-item';
+      const meta = document.createElement('div');
+      meta.className = 'recovery-meta';
+      const when = new Date(session.startedAt || session.updatedAt || Date.now()).toLocaleString();
+      meta.textContent = `${when} · ${session.turnCount} реплик · ${session.errorCount || 0} ошибок`;
+      const actions = document.createElement('div');
+      actions.className = 'recovery-actions';
+      const add = (label, action) => {
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try { await action(); renderRecovery(await cue.sessionsList()); }
+          catch (error) { showStatus('Восстановление: ' + mediaErrorDetail(error)); }
+          finally { button.disabled = false; }
+        });
+        actions.appendChild(button);
+      };
+      add('Продолжить', async () => { captureWanted = true; void startSystemAudio(); await cue.sessionContinue(session.filePath); });
+      add('Итог', () => cue.sessionSummary(session.filePath));
+      add('RAW', () => cue.sessionOpen(session.filePath));
+      row.append(meta, actions);
+      list.appendChild(row);
+    }
+  }
+  cue.on('recovery:available', ({ sessions }) => renderRecovery(sessions));
+
+  const catalogScrim = $('#catalog-scrim');
+  const catalogQuery = $('#catalog-query');
+  const catalogResults = $('#catalog-results');
+  let catalogTimer = null;
+  async function copyCatalogSection(filePath, kind) {
+    const text = await cue.catalogExtract(filePath, kind);
+    if (!text) { showStatus(kind === 'tasks' ? 'Задачи не найдены.' : 'Решения не найдены.'); return; }
+    await navigator.clipboard.writeText(text);
+    showStatus(kind === 'tasks' ? 'Задачи скопированы.' : 'Решения скопированы.');
+  }
+  async function renderCatalog() {
+    const items = await cue.catalogSearch(catalogQuery.value.trim());
+    catalogResults.innerHTML = '';
+    if (!items.length) { const empty = document.createElement('div'); empty.className = 'catalog-empty'; empty.textContent = 'Встречи не найдены'; catalogResults.appendChild(empty); return; }
+    for (const item of items) {
+      const row = document.createElement('div'); row.className = 'catalog-item';
+      const title = document.createElement('div'); title.className = 'catalog-title'; title.textContent = item.title;
+      const meta = document.createElement('div'); meta.className = 'catalog-meta'; meta.textContent = `${new Date(item.date).toLocaleString()}${item.client ? ' · ' + item.client : ''}${item.tags.length ? ' · ' + item.tags.join(', ') : ''}`;
+      const snippet = document.createElement('div'); snippet.className = 'catalog-snippet'; snippet.textContent = item.snippet;
+      const actions = document.createElement('div'); actions.className = 'catalog-actions';
+      const add = (label, fn) => { const button = document.createElement('button'); button.textContent = label; button.addEventListener('click', async () => { button.disabled = true; try { await fn(); } catch (error) { showStatus('Каталог: ' + mediaErrorDetail(error)); } finally { button.disabled = false; } }); actions.appendChild(button); };
+      add('Открыть', () => cue.catalogOpen(item.filePath));
+      add('DOCX', () => cue.catalogExport(item.filePath, 'docx'));
+      add('PDF', () => cue.catalogExport(item.filePath, 'pdf'));
+      add('Копировать задачи', () => copyCatalogSection(item.filePath, 'tasks'));
+      add('Копировать решения', () => copyCatalogSection(item.filePath, 'decisions'));
+      row.append(title, meta, snippet, actions); catalogResults.appendChild(row);
+    }
+  }
+  $('#search-btn').addEventListener('click', async () => { catalogScrim.classList.remove('hidden'); await renderCatalog(); catalogQuery.focus(); });
+  $('#catalog-close').addEventListener('click', () => catalogScrim.classList.add('hidden'));
+  catalogScrim.addEventListener('click', (event) => { if (event.target === catalogScrim) catalogScrim.classList.add('hidden'); });
+  catalogQuery.addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => void renderCatalog(), 180); });
 
   // ---- settings ----------------------------------------------------------
   const scrim = $('#settings-scrim');
@@ -1052,6 +1190,7 @@
     renderCaptureControl(!!st.active);
     if (st.active) { void startMic(); void startSystemAudio(); }
     updateCaptureHealth();
+    renderRecovery(await cue.sessionsList());
     if (!settings.onboarded) showOnboard();
 
     if (cue.platform === 'win32') {

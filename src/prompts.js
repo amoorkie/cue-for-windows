@@ -3,7 +3,7 @@
 
 function formatTranscript(turns, limit) {
   const recent = limit ? turns.slice(-limit) : turns;
-  return recent.map((t) => (t.channel === 'them' ? 'Them: ' : 'You: ') + t.text).join('\n');
+  return recent.map((t) => (t.speaker || (t.channel === 'them' ? 'Them' : 'You')) + ': ' + t.text).join('\n');
 }
 
 const MODES = {

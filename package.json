@@ -1,13 +1,13 @@
 {
   "name": "cue",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "Open-source cross-platform AI overlay with screen, microphone, and system-audio input.",
   "license": "GPL-3.0-or-later",
   "author": "cue",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/endpoints.test.js test/recap-export.test.js",
+    "test": "node --test test/endpoints.test.js test/recap-export.test.js test/session-journal.test.js test/meeting-tools.test.js",
     "test:ui": "electron test/ui-smoke.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --mac zip",
@@ -68,7 +68,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@google/genai": "^0.3.0",
+    "docx": "^9.7.1",
     "lucide-static": "^0.468.0",
-    "openai": "^4.73.0"
+    "openai": "^4.73.0",
+    "pdfkit": "^0.17.2"
   }
 }
