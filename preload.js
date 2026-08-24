@@ -9,7 +9,16 @@ contextBridge.exposeInMainWorld('cue', {
   ask: (payload) => ipcRenderer.send('ask', payload),
   assistToggle: () => ipcRenderer.invoke('assist:toggle'),
   captureToggle: () => ipcRenderer.invoke('capture:toggle'),
+  captureFinishRaw: () => ipcRenderer.invoke('capture:finish-raw'),
   captureState: () => ipcRenderer.invoke('capture:state'),
+  sessionsList: () => ipcRenderer.invoke('sessions:list'),
+  sessionOpen: (filePath) => ipcRenderer.invoke('sessions:open', filePath),
+  sessionSummary: (filePath) => ipcRenderer.invoke('sessions:summary', filePath),
+  sessionContinue: (filePath) => ipcRenderer.invoke('sessions:continue', filePath),
+  catalogSearch: (query) => ipcRenderer.invoke('catalog:search', query),
+  catalogOpen: (filePath) => ipcRenderer.invoke('catalog:open', filePath),
+  catalogExport: (filePath, format) => ipcRenderer.invoke('catalog:export', filePath, format),
+  catalogExtract: (filePath, kind) => ipcRenderer.invoke('catalog:extract', filePath, kind),
   micPcm: (arrayBuffer) => ipcRenderer.send('mic:pcm', arrayBuffer),
   systemPcm: (arrayBuffer) => ipcRenderer.send('system:pcm', arrayBuffer),
   setIgnoreMouse: (v) => ipcRenderer.send('mouse:ignore', v),
@@ -17,7 +26,7 @@ contextBridge.exposeInMainWorld('cue', {
   openPane: (url) => ipcRenderer.send('open-pane', url),
   log: (msg) => ipcRenderer.send('log', msg),
   on: (channel, cb) => {
-    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'settings:open'];
+    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'settings:open', 'diagnostics', 'recovery:available', 'session:loaded'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, data) => cb(data));
   }

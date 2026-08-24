@@ -23,10 +23,17 @@
     <!-- Main assistant panel -->
     <div id="panel-wrap">
       <div id="panel" class="glass no-drag">
+        <div id="panel-scroll">
         <section id="live-view" aria-label="Живой конспект созвона">
           <div class="view-head">
             <span class="view-title" data-i18n="liveTranscript">Живой конспект</span>
             <span id="transcript-count">Нет реплик</span>
+          </div>
+          <div id="capture-diagnostics" aria-label="Диагностика записи">
+            <span id="diag-mic" class="diag-pill idle">Микрофон 0 KB</span>
+            <span id="diag-system" class="diag-pill idle">Система 0 KB</span>
+            <span id="diag-stt" class="diag-pill idle">STT ожидание</span>
+            <span id="diag-disk" class="diag-pill idle">Диск ожидание</span>
           </div>
           <div id="live-transcript" role="log" aria-live="polite"></div>
         </section>
@@ -39,6 +46,11 @@
           <div id="messages"></div>
         </section>
 
+        <section id="recovery-panel" class="hidden" aria-label="Незавершённые встречи">
+          <div class="view-head"><span class="view-title">Восстановление</span><span id="recovery-count"></span></div>
+          <div id="recovery-list"></div>
+        </section>
+
         <div id="action-row">
           <button class="act" data-mode="assist"><span class="ic"></span><span data-i18n="assist">Помощь</span></button>
           <span class="sep">•</span>
@@ -47,6 +59,9 @@
           <button class="act" data-mode="followup"><span class="ic"></span><span data-i18n="followup">Уточняющие вопросы</span></button>
           <span class="sep">•</span>
           <button class="act" data-mode="recap"><span class="ic"></span><span data-i18n="recap">Итоги</span></button>
+          <span class="sep">•</span>
+          <button class="act" id="finish-raw-btn"><span class="ic"></span><span>Сохранить RAW</span></button>
+        </div>
         </div>
 
         <div id="composer">
@@ -57,6 +72,7 @@
           <div id="composer-bottom">
             <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span data-i18n="smart">Smart</span></button>
             <button id="copy-btn" class="more-btn" title="Copy messages" aria-label="Copy messages"></button>
+            <button id="search-btn" class="more-btn" title="Поиск по встречам" aria-label="Поиск по встречам"></button>
             <button id="more-btn" class="more-btn" title="Settings"></button>
             <button id="zoom-out-btn" class="more-btn" title="Zoom Out" style="font-size: 18px; font-family: monospace; line-height: 1;">-</button>
             <button id="zoom-in-btn" class="more-btn" title="Zoom In" style="font-size: 16px; font-family: monospace; line-height: 1;">+</button>
@@ -65,6 +81,14 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="catalog-scrim" class="hidden">
+    <div id="catalog" class="glass no-drag">
+      <div class="s-head"><div class="s-title">Встречи</div><button id="catalog-close" class="s-close">Готово</button></div>
+      <input id="catalog-query" type="search" placeholder="Название, клиент, тег или текст" />
+      <div id="catalog-results"></div>
     </div>
   </div>
 

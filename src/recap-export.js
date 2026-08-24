@@ -51,7 +51,7 @@ function removeLeadingTitle(summary) {
 function formatTranscript(transcript) {
   return (transcript || [])
     .filter((turn) => turn && turn.text && turn.text.trim())
-    .map((turn) => `- **${turn.channel === 'them' ? 'Собеседник' : 'Вы'}:** ${turn.text.trim().replace(/\r?\n/g, ' ')}`)
+    .map((turn) => `- **${turn.speaker || (turn.channel === 'them' ? 'Собеседник' : 'Вы')}:** ${turn.text.trim().replace(/\r?\n/g, ' ')}`)
     .join('\n');
 }
 
@@ -86,4 +86,19 @@ async function saveRecap({ outputDirectory, summary, transcript }) {
   return { filePath, fileName: path.basename(filePath), title };
 }
 
-module.exports = { saveRecap };
+async function saveTranscriptFallback({ outputDirectory, transcript, reason = 'Сырой текст сохранён до генерации итога.' }) {
+  if (!outputDirectory) throw new Error('outputDirectory is required.');
+  const directory = path.resolve(outputDirectory);
+  await fs.mkdir(directory, { recursive: true });
+  const title = extractTitle('', transcript);
+  const filePath = await uniquePath(directory, `${timestamp()} — RAW — ${title}`);
+  const transcriptMarkdown = formatTranscript(transcript);
+  const content = [
+    `# ${title}`, '', `> Сырая расшифровка сохранена ${new Date().toLocaleString('ru-RU')}`, '',
+    `> ${reason}`, '', '## Транскрипция', '', transcriptMarkdown || '_Речь не распознана._', ''
+  ].join('\n');
+  await fs.writeFile(filePath, content, 'utf8');
+  return { filePath, fileName: path.basename(filePath), title };
+}
+
+module.exports = { saveRecap, saveTranscriptFallback };

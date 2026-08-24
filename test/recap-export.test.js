@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { saveRecap } = require('../src/recap-export');
+const { saveRecap, saveTranscriptFallback } = require('../src/recap-export');
 
 test('saves recap Markdown directly in the configured Cue Documents directory', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cue-recap-'));
@@ -29,4 +29,15 @@ test('requires an explicit output directory', async () => {
     saveRecap({ summary: 'Итог', transcript: [] }),
     /outputDirectory is required/
   );
+});
+
+test('saves a raw transcript without requiring an AI summary', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cue-raw-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const result = await saveTranscriptFallback({
+    outputDirectory: root,
+    transcript: [{ channel: 'you', text: 'Сохрани это сразу.', ts: Date.now() }]
+  });
+  assert.match(result.fileName, /RAW/);
+  assert.match(await fs.readFile(result.filePath, 'utf8'), /Сохрани это сразу/);
 });

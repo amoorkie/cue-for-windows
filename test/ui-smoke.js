@@ -31,6 +31,7 @@ app.whenReady().then(async () => {
         , 'copy-btn'
         , 'stop-btn', 'live-dot'
         , 'stt-protocol-field', 'stt-protocol'
+        , 'panel-scroll', 'composer', 'recovery-panel', 'recovery-list'
       ];
       const missing = required.filter((id) => !document.getElementById(id));
       document.getElementById('more-btn').click();
@@ -97,6 +98,9 @@ app.whenReady().then(async () => {
         captureControlIdle: document.getElementById('stop-btn').getAttribute('aria-pressed') === 'false'
           && document.getElementById('stop-btn').querySelector('svg path')
           && document.getElementById('live-dot').classList.contains('off'),
+        panelScrollEnabled: getComputedStyle(document.getElementById('panel-scroll')).overflowY === 'auto'
+          && getComputedStyle(document.getElementById('panel')).overflow === 'hidden'
+          && document.getElementById('composer').parentElement.id === 'panel',
         partialSttPatchPreserved: afterPartialSttPatch.stt.routes.openai.model === 'whisper-custom'
           && afterPartialSttPatch.stt.routes.openai.enabled === false,
         invalidEndpointFailedClosed: afterInvalid.baseUrls.compatible === 'http://localhost:11434/v1'
@@ -115,6 +119,7 @@ app.whenReady().then(async () => {
       && result.appearanceApplied
       && result.quickLabelsRussian
       && result.captureControlIdle
+      && result.panelScrollEnabled
       && result.partialSttPatchPreserved
       && result.invalidEndpointFailedClosed;
     console.log(JSON.stringify(result));
