@@ -209,7 +209,7 @@
 
   // ---- paint icons -------------------------------------------------------
   $('#logo-btn').innerHTML = icon('logo', { size: 18 });
-  $('.tb-hide .panel-toggle-icon').innerHTML = icon('message-square', { size: 16, stroke: 1.8 });
+  $('.tb-hide .panel-toggle-icon').innerHTML = icon('app-window', { size: 16, stroke: 1.8 });
   $('#stop-btn').innerHTML = icon('play', { size: 15 });
   document.querySelector('.act[data-mode="assist"] .ic').innerHTML = icon('sparkles', { size: 16 });
   document.querySelector('.act[data-mode="say"] .ic').innerHTML = icon('wand-sparkles', { size: 16 });
@@ -231,8 +231,11 @@
   const UI_TEXT = {
     en: {
       hide: 'Hide', assist: 'Assist', say: 'What should I say?', followup: 'Follow-up questions', recap: 'Recap', smart: 'Smart', copy: 'Copy messages',
-      settings: 'Settings', done: 'Done', provider: 'Provider', providerTab: 'Provider', interfaceTab: 'Interface', apiKey: 'API key', apiEndpoint: 'API endpoint', officialHint: 'leave blank for the official API',
-      baseUrl: 'Base URL', trustApi: 'I trust this destination for API requests', sendBearer: 'Send API key as a Bearer token',
+      settings: 'Settings', done: 'Done', provider: 'Provider', providerTab: 'Provider', interfaceTab: 'Interface', apiKey: 'API key', apiEndpoint: 'API endpoint', officialHint: 'leave blank for the official API', endpoint: 'Endpoint', advanced: 'Advanced',
+      providerIntro: 'Enter the connection once. The same provider, API key and endpoint power transcription and analysis.', unifiedService: 'AI provider', unifiedServiceHint: 'Used for both meeting transcription and analysis', allInputs: 'Audio + text + screen',
+      baseUrl: 'Base URL', trustApi: 'I trust this destination for the API key, audio, text and screenshots', sendBearer: 'Send API key as a Bearer token',
+      endpointRequired: 'A Base URL is required for the Custom provider.', officialEndpoint: 'Official endpoint: {endpoint}', customEndpoint: 'Custom endpoint: your API key, audio, prompts and screenshots can be sent to {host}.',
+      bearerTooltip: 'Enable this when the endpoint expects the API key in the Authorization: Bearer header. Disable it only for a local or custom service that explicitly works without authorization.', trustTooltip: 'Confirms that you allow Cue to send your API key and meeting data to this custom address.',
       apiKeys: 'API keys', storedLocally: 'stored locally in cue-data.json', models: 'Models', modelHint: 'fast = Smart off · smart = Smart on',
       fastModel: 'Fast', smartModel: 'Smart', transcription: 'Transcription route', separateFromChat: 'separate from chat',
       useForSpeech: 'Use this provider for speech-to-text', sttKey: 'STT key', sendSttBearer: 'Send STT key as a Bearer token',
@@ -243,8 +246,11 @@
     },
     ru: {
       hide: 'Скрыть', assist: 'Помоги', say: 'Что ответить?', followup: 'Что спросить дальше?', recap: 'Краткое резюме', smart: 'Умный режим', copy: 'Скопировать сообщения',
-      settings: 'Настройки', done: 'Готово', provider: 'Провайдер', providerTab: 'Провайдер', interfaceTab: 'Интерфейс', apiKey: 'API-ключ', apiEndpoint: 'API endpoint', officialHint: 'пусто — официальный API',
-      baseUrl: 'Базовый URL', trustApi: 'Я доверяю этому адресу для API-запросов', sendBearer: 'Отправлять API-ключ как Bearer-токен',
+      settings: 'Настройки', done: 'Готово', provider: 'Провайдер', providerTab: 'Провайдер', interfaceTab: 'Интерфейс', apiKey: 'API-ключ', apiEndpoint: 'API endpoint', officialHint: 'пусто — официальный API', endpoint: 'Эндпоинт', advanced: 'Дополнительно',
+      providerIntro: 'Введите подключение один раз. Один провайдер, API-ключ и эндпоинт используются для расшифровки и анализа.', unifiedService: 'ИИ-провайдер', unifiedServiceHint: 'Одновременно расшифровывает встречу и анализирует её', allInputs: 'Аудио + текст + экран',
+      baseUrl: 'Базовый URL', trustApi: 'Я доверяю этому адресу для отправки API-ключа, аудио, текста и снимков экрана', sendBearer: 'Отправлять API-ключ как Bearer-токен',
+      endpointRequired: 'Для провайдера Custom нужно указать базовый URL.', officialEndpoint: 'Официальный эндпоинт: {endpoint}', customEndpoint: 'Пользовательский эндпоинт: API-ключ, аудио, запросы и снимки экрана могут отправляться на {host}.',
+      bearerTooltip: 'Включите, если сервис ожидает API-ключ в заголовке Authorization: Bearer. Отключайте только для локального или собственного сервиса, который явно работает без авторизации.', trustTooltip: 'Подтверждает, что Cue может отправлять API-ключ и данные встречи на этот пользовательский адрес.',
       apiKeys: 'API-ключи', storedLocally: 'хранятся локально в cue-data.json', models: 'Модели', modelHint: 'быстрый = Smart выкл. · умный = Smart вкл.',
       fastModel: 'Быстрая', smartModel: 'Умная', transcription: 'Маршрут расшифровки', separateFromChat: 'отдельно от чата',
       useForSpeech: 'Использовать провайдер для распознавания речи', sttKey: 'Ключ STT', sendSttBearer: 'Отправлять STT-ключ как Bearer-токен',
@@ -283,10 +289,10 @@
     if (settingsButton) setTooltip(settingsButton, t('settings'));
     const hideButton = $('#hide-btn');
     if (hideButton) {
-      const collapsed = $('#panel').classList.contains('collapsed');
+      const collapsed = !!hiddenWorkspaceState;
       const panelLabel = collapsed
-        ? (language === 'ru' ? 'Показать основное окно' : 'Show main window')
-        : (language === 'ru' ? 'Скрыть основное окно' : 'Hide main window');
+        ? (language === 'ru' ? 'Показать все панели' : 'Show all panels')
+        : (language === 'ru' ? 'Скрыть все панели' : 'Hide all panels');
       setTooltip(hideButton, panelLabel);
       hideButton.setAttribute('aria-label', panelLabel);
     }
@@ -298,11 +304,27 @@
     }
     const copyButton = $('#copy-btn');
     if (copyButton) { setTooltip(copyButton, t('copy')); copyButton.setAttribute('aria-label', t('copy')); }
+    const diagnosticTooltips = language === 'ru' ? {
+      '#diag-mic': 'Объём звука, полученного с вашего микрофона за текущую запись.',
+      '#diag-system': 'Объём звука встречи, полученного от других приложений.',
+      '#diag-stt': 'Сколько аудиофрагментов обработал сервис распознавания речи. Во время обработки отображается многоточие.',
+      '#diag-disk': 'Сколько фрагментов встречи сохранено в локальный черновик на компьютере.',
+      '#transcript-count': 'Сколько распознанных фрагментов речи добавлено в текст текущей встречи.'
+    } : {
+      '#diag-mic': 'Audio received from your microphone during the current recording.',
+      '#diag-system': 'Meeting audio received from other applications.',
+      '#diag-stt': 'Audio chunks processed by the speech recognition service. An ellipsis appears while processing.',
+      '#diag-disk': 'Meeting fragments saved to the local draft on this computer.',
+      '#transcript-count': 'Recognized speech fragments added to the current meeting text.'
+    };
+    Object.entries(diagnosticTooltips).forEach(([selector, text]) => setTooltip($(selector), text));
     const sendButton = $('#send-btn');
     if (sendButton) setTooltip(sendButton, language === 'ru' ? 'Отправить' : 'Send');
     setTooltip($('#smart-toggle'), language === 'ru'
       ? 'Использует более сильную модель для сложных вопросов. Ответ может занять немного больше времени.'
       : 'Uses a stronger model for complex questions. The answer may take a little longer.');
+    setTooltip($('#auth-mode-row'), t('bearerTooltip'));
+    setTooltip($('#endpoint-trust-row'), t('trustTooltip'));
     customControls.forEach((sync) => sync());
     renderCaptureControl($('#stop-btn').classList.contains('active'));
   }
@@ -419,7 +441,8 @@
   function clearLiveTranscript() {
     liveTranscript.innerHTML = '';
     transcriptCount = 0;
-    transcriptCountEl.textContent = currentLanguage() === 'ru' ? 'Нет реплик' : 'No turns';
+    transcriptCountEl.textContent = currentLanguage() === 'ru' ? 'Текст 0' : 'Text 0';
+    transcriptCountEl.className = 'diag-pill idle';
   }
 
   function appendTranscript(turn) {
@@ -445,7 +468,8 @@
     row.append(meta, text);
     liveTranscript.appendChild(row);
     transcriptCount += 1;
-    transcriptCountEl.textContent = currentLanguage() === 'ru' ? `${transcriptCount} ${transcriptCount === 1 ? 'реплика' : 'реплик'}` : `${transcriptCount} turn${transcriptCount === 1 ? '' : 's'}`;
+    transcriptCountEl.textContent = currentLanguage() === 'ru' ? `Текст ${transcriptCount}` : `Text ${transcriptCount}`;
+    transcriptCountEl.className = 'diag-pill ok';
     if (atBottom) requestAnimationFrame(() => { liveTranscript.scrollTop = liveTranscript.scrollHeight; });
   }
 
@@ -558,15 +582,46 @@
     await cue.settingsSet({ smart: settings.smart });
   });
 
-  // Hide / collapse
-  $('#hide-btn').addEventListener('click', () => {
-    const collapsed = $('#panel').classList.toggle('collapsed');
-    $('#hide-btn').classList.toggle('collapsed', collapsed);
-    const label = collapsed
-      ? (currentLanguage() === 'ru' ? 'Показать основное окно' : 'Show main window')
-      : (currentLanguage() === 'ru' ? 'Скрыть основное окно' : 'Hide main window');
+  // Hide / restore the whole workspace while preserving which panels were open.
+  let hiddenWorkspaceState = null;
+  function setWorkspaceToggleState(hidden) {
+    $('#hide-btn').classList.toggle('on', !hidden);
+    $('#hide-btn').setAttribute('aria-pressed', String(!hidden));
+    const label = hidden
+      ? (currentLanguage() === 'ru' ? 'Показать все панели' : 'Show all panels')
+      : (currentLanguage() === 'ru' ? 'Скрыть все панели' : 'Hide all panels');
     setTooltip($('#hide-btn'), label);
     $('#hide-btn').setAttribute('aria-label', label);
+  }
+  $('#hide-btn').addEventListener('click', () => {
+    if (!hiddenWorkspaceState) {
+      hiddenWorkspaceState = {
+        main: !$('#panel').classList.contains('collapsed'),
+        catalog: !$('#catalog-scrim').classList.contains('hidden'),
+        settings: !$('#settings-scrim').classList.contains('hidden'),
+        onboarding: !$('#onboard-scrim').classList.contains('hidden')
+      };
+      $('#panel').classList.add('collapsed');
+      $('#catalog-scrim').classList.add('hidden');
+      $('#settings-scrim').classList.add('hidden');
+      $('#onboard-scrim').classList.add('hidden');
+      $('#search-btn').classList.remove('on');
+      $('#more-btn').classList.remove('on');
+      $('#logo-btn').classList.remove('on');
+      setWorkspaceToggleState(true);
+      return;
+    }
+
+    const restore = hiddenWorkspaceState;
+    hiddenWorkspaceState = null;
+    $('#panel').classList.toggle('collapsed', !restore.main);
+    $('#catalog-scrim').classList.toggle('hidden', !restore.catalog);
+    $('#settings-scrim').classList.toggle('hidden', !restore.settings);
+    $('#onboard-scrim').classList.toggle('hidden', !restore.onboarding);
+    $('#search-btn').classList.toggle('on', restore.catalog);
+    $('#more-btn').classList.toggle('on', restore.settings);
+    $('#logo-btn').classList.toggle('on', restore.onboarding);
+    setWorkspaceToggleState(false);
   });
 
   // Stop = start/stop listening. Kick off system-audio capture straight from the click so
@@ -574,7 +629,7 @@
   let captureTogglePending = false;
   let captureWanted = false;
   const captureHealth = { mic: 'idle', system: 'idle' };
-  const captureMetrics = { micBytes: 0, systemBytes: 0, stt: 'idle', disk: 'idle', provider: '' };
+  const captureMetrics = { micBytes: 0, systemBytes: 0, stt: 'idle', disk: 'idle', provider: '', sttProcessed: 0, diskWrites: 0 };
   const usefulAudioAt = { mic: 0, system: 0 };
   let silenceWarnedAt = 0;
   let micVisualLevel = 0;
@@ -607,12 +662,17 @@
     el.textContent = text;
   }
   function renderDiagnostics() {
-    setDiag('#diag-mic', captureHealth.mic, `Микрофон ${formatBytes(captureMetrics.micBytes)}`);
-    setDiag('#diag-system', captureHealth.system, `Система ${formatBytes(captureMetrics.systemBytes)}`);
-    const sttLabels = { idle: 'STT ожидание', working: 'STT обработка', ok: `STT ${captureMetrics.provider || 'готов'}`, error: 'STT ошибка' };
-    const diskLabels = { idle: 'Диск ожидание', ok: 'Диск сохранено', error: 'Диск ошибка' };
-    setDiag('#diag-stt', captureMetrics.stt, sttLabels[captureMetrics.stt] || 'STT');
-    setDiag('#diag-disk', captureMetrics.disk, diskLabels[captureMetrics.disk] || 'Диск');
+    const ru = currentLanguage() === 'ru';
+    setDiag('#diag-mic', captureHealth.mic, `${ru ? 'Микрофон' : 'Mic'} ${formatBytes(captureMetrics.micBytes)}`);
+    setDiag('#diag-system', captureHealth.system, `${ru ? 'Звук' : 'Audio'} ${formatBytes(captureMetrics.systemBytes)}`);
+    const sttLabels = ru
+      ? { idle: `Речь ${captureMetrics.sttProcessed}`, working: 'Речь …', ok: `Речь ${captureMetrics.sttProcessed}`, error: 'Речь !' }
+      : { idle: `Speech ${captureMetrics.sttProcessed}`, working: 'Speech …', ok: `Speech ${captureMetrics.sttProcessed}`, error: 'Speech !' };
+    const diskLabels = ru
+      ? { idle: `Сохранено ${captureMetrics.diskWrites}`, ok: `Сохранено ${captureMetrics.diskWrites}`, error: 'Сохранение !' }
+      : { idle: `Saved ${captureMetrics.diskWrites}`, ok: `Saved ${captureMetrics.diskWrites}`, error: 'Saving !' };
+    setDiag('#diag-stt', captureMetrics.stt, sttLabels[captureMetrics.stt] || sttLabels.idle);
+    setDiag('#diag-disk', captureMetrics.disk, diskLabels[captureMetrics.disk] || diskLabels.idle);
   }
   function pcmRms(arrayBuffer) {
     const samples = new Int16Array(arrayBuffer);
@@ -839,7 +899,7 @@
     captureWanted = active;
     renderCaptureControl(active);
     if (active) {
-      captureMetrics.micBytes = 0; captureMetrics.systemBytes = 0; captureMetrics.stt = 'idle'; captureMetrics.disk = 'idle'; captureMetrics.provider = '';
+      captureMetrics.micBytes = 0; captureMetrics.systemBytes = 0; captureMetrics.stt = 'idle'; captureMetrics.disk = 'idle'; captureMetrics.provider = ''; captureMetrics.sttProcessed = 0; captureMetrics.diskWrites = 0;
       usefulAudioAt.mic = Date.now(); usefulAudioAt.system = Date.now(); silenceWarnedAt = 0;
       void startMic(); void startSystemAudio(); clearMessages(); clearLiveTranscript(); assistStateEl.textContent = t('listening');
     } else { stopMic(); stopSystemAudio(); assistStateEl.textContent = t('ready'); }
@@ -847,6 +907,8 @@
   });
   cue.on('transcript', appendTranscript);
   cue.on('diagnostics', (data) => {
+    if (data.stt === 'ok') captureMetrics.sttProcessed += 1;
+    if (data.disk === 'ok') captureMetrics.diskWrites += 1;
     if (data.stt) captureMetrics.stt = data.stt;
     if (data.disk) captureMetrics.disk = data.disk;
     if (data.sttProvider) captureMetrics.provider = data.sttProvider;
@@ -1021,7 +1083,6 @@
   };
   const sttDefaultModels = { openai: 'whisper-1', gemini: 'gemini-2.5-flash', compatible: '' };
   const endpointTrustDraft = {};
-  const sttTrustDraft = {};
   let settingsSaving = false;
 
   function showSettingsTab(name) {
@@ -1071,6 +1132,10 @@
     if (!settings.models) settings.models = {};
     if (!settings.stt) settings.stt = {};
     if (!settings.stt.routes) settings.stt.routes = {};
+    if (!sttProviderNames.includes(settings.provider)) {
+      settings.provider = sttProviderNames.find((provider) => settings.apiKeys[provider]) || 'openai';
+    }
+    settings.stt.provider = settings.provider;
     for (const provider of providerNames) {
       if (settings.apiKeys[provider] === undefined) settings.apiKeys[provider] = '';
       if (settings.baseUrls[provider] === undefined) settings.baseUrls[provider] = '';
@@ -1121,10 +1186,6 @@
     for (const provider of providerNames) {
       endpointTrustDraft[provider] = trustedValue(settings.baseUrls[provider], settings.trustedBaseUrls[provider], provider);
     }
-    for (const provider of sttProviderNames) {
-      const route = settings.stt.routes[provider];
-      sttTrustDraft[provider] = trustedValue(route.baseUrl, route.trustedBaseUrl, provider);
-    }
     $('#provider-select').value = settings.provider;
     $('#appearance-language').value = settings.appearance.language;
     $('#appearance-drag').checked = settings.appearance.windowDrag;
@@ -1156,27 +1217,11 @@
     $('#endpoint-trust').checked = endpointTrustDraft[provider] === normalizedOrEmpty(settings.baseUrls[provider], provider);
     $('#auth-mode-row').classList.toggle('hidden', provider !== 'compatible');
     $('#send-auth').checked = settings.authModes.compatible !== 'none';
+    const route = settings.stt.routes[provider];
+    $('#stt-model').value = route.model || sttDefaultModels[provider] || '';
+    $('#stt-protocol-field').classList.toggle('hidden', provider !== 'compatible');
+    $('#stt-protocol').value = route.protocol === 'chat-audio' ? 'chat-audio' : 'transcriptions';
     updateEndpointNote(false);
-
-    const hasStt = sttProviderNames.includes(provider);
-    $('#stt-route-group').classList.toggle('hidden', !hasStt);
-    if (hasStt) {
-      const route = settings.stt.routes[provider];
-      $('#stt-enabled').checked = !!route.enabled;
-      $('#stt-api-key').value = settings.sttApiKeys[provider] || '';
-      $('#stt-auth-mode-row').classList.toggle('hidden', provider !== 'compatible');
-      $('#stt-send-auth').checked = route.authMode !== 'none';
-      $('#stt-protocol-field').classList.toggle('hidden', provider !== 'compatible');
-      $('#stt-protocol').value = route.protocol === 'chat-audio' ? 'chat-audio' : 'transcriptions';
-      $('#stt-model').value = route.model || '';
-      $('#stt-base-url').value = route.baseUrl || '';
-      $('#stt-base-url').placeholder = provider === 'compatible'
-        ? 'http://localhost:8000/v1'
-        : endpointPlaceholders[provider];
-      $('#stt-endpoint-trust').checked = sttTrustDraft[provider] === normalizedOrEmpty(route.baseUrl, provider);
-      updateSttKeyPlaceholder();
-      updateSttControls(false);
-    }
   }
 
   function captureProviderFields(provider) {
@@ -1187,15 +1232,16 @@
     settings.apiKeys[provider] = $('#provider-api-key').value.trim();
     endpointTrustDraft[provider] = $('#endpoint-trust').checked ? normalizedOrEmpty(settings.baseUrls[provider], provider) : '';
     if (provider === 'compatible') settings.authModes.compatible = $('#send-auth').checked ? 'bearer' : 'none';
-    if (sttProviderNames.includes(provider)) {
-      const route = settings.stt.routes[provider];
-      route.enabled = $('#stt-enabled').checked;
-      settings.sttApiKeys[provider] = $('#stt-api-key').value.trim();
-      route.authMode = provider === 'compatible' && !$('#stt-send-auth').checked ? 'none' : 'bearer';
-      route.protocol = provider === 'compatible' && $('#stt-protocol').value === 'chat-audio' ? 'chat-audio' : 'transcriptions';
-      route.model = $('#stt-model').value.trim();
-      route.baseUrl = $('#stt-base-url').value.trim();
-      sttTrustDraft[provider] = $('#stt-endpoint-trust').checked ? normalizedOrEmpty(route.baseUrl, provider) : '';
+    const route = settings.stt.routes[provider];
+    route.enabled = true;
+    route.authMode = provider === 'compatible' && !$('#send-auth').checked ? 'none' : 'bearer';
+    route.protocol = provider === 'compatible' && $('#stt-protocol').value === 'chat-audio' ? 'chat-audio' : 'transcriptions';
+    route.model = $('#stt-model').value.trim();
+    route.baseUrl = settings.baseUrls[provider];
+    settings.sttApiKeys[provider] = settings.apiKeys[provider];
+    settings.stt.provider = provider;
+    for (const other of sttProviderNames) {
+      if (other !== provider) settings.stt.routes[other].enabled = false;
     }
   }
 
@@ -1239,16 +1285,15 @@
     const note = $('#endpoint-note');
     const trustRow = $('#endpoint-trust-row');
     const raw = input.value.trim();
-    updateSttKeyPlaceholder();
     input.classList.remove('invalid');
     note.className = 's-endpoint-note';
     if (!raw) {
       trustRow.classList.add('hidden');
       if (settings.provider === 'compatible') {
         note.classList.add('error');
-        note.textContent = 'A Base URL is required for the Custom provider.';
+        note.textContent = t('endpointRequired');
       } else {
-        note.textContent = 'Official endpoint: ' + endpointPlaceholders[settings.provider];
+        note.textContent = t('officialEndpoint').replace('{endpoint}', endpointPlaceholders[settings.provider]);
       }
       return;
     }
@@ -1256,7 +1301,7 @@
       const normalized = normalizeEndpointInput(raw, settings.provider);
       if (!normalized) {
         trustRow.classList.add('hidden');
-        note.textContent = 'Official endpoint: ' + endpointPlaceholders[settings.provider];
+        note.textContent = t('officialEndpoint').replace('{endpoint}', endpointPlaceholders[settings.provider]);
         return;
       }
       const host = new URL(normalized).host;
@@ -1266,68 +1311,7 @@
       }
       trustRow.classList.remove('hidden');
       note.classList.add('custom');
-      note.textContent = 'Custom endpoint: your API key, prompts, and screenshots can be sent to ' + host + '.';
-    } catch (error) {
-      trustRow.classList.add('hidden');
-      input.classList.add('invalid');
-      note.classList.add('error');
-      note.textContent = error.message;
-    }
-  }
-
-  function updateSttKeyPlaceholder() {
-    if (!sttProviderNames.includes(settings.provider)) return;
-    const noAuth = settings.provider === 'compatible' && !$('#stt-send-auth').checked;
-    const customChat = !!normalizedOrEmpty($('#base-url').value, settings.provider);
-    const customStt = !!normalizedOrEmpty($('#stt-base-url').value, settings.provider);
-    $('#stt-api-key').placeholder = noAuth
-      ? 'not used in No authentication mode'
-      : (customChat || customStt || settings.provider === 'compatible' ? 'required for this route' : 'optional for official API');
-  }
-
-  function updateSttControls(resetTrust) {
-    const provider = settings.provider;
-    const enabled = $('#stt-enabled').checked;
-    const group = $('#stt-route-group');
-    const input = $('#stt-base-url');
-    const note = $('#stt-endpoint-note');
-    const trustRow = $('#stt-trust-row');
-    updateSttKeyPlaceholder();
-    group.classList.toggle('disabled', !enabled);
-    input.classList.remove('invalid');
-    note.className = 's-endpoint-note';
-    if (!enabled) {
-      trustRow.classList.add('hidden');
-      note.textContent = 'This transcription route is disabled.';
-      return;
-    }
-    const raw = input.value.trim();
-    if (!raw) {
-      trustRow.classList.add('hidden');
-      if (provider === 'compatible') {
-        input.classList.add('invalid');
-        note.classList.add('error');
-        note.textContent = 'A separate STT Base URL is required for compatible transcription.';
-      } else {
-        note.textContent = 'Official transcription endpoint: ' + endpointPlaceholders[provider];
-      }
-      return;
-    }
-    try {
-      const normalized = normalizeEndpointInput(raw, provider);
-      if (!normalized) {
-        trustRow.classList.add('hidden');
-        note.textContent = 'Official transcription endpoint: ' + endpointPlaceholders[provider];
-        return;
-      }
-      const host = new URL(normalized).host;
-      if (resetTrust && sttTrustDraft[provider] !== normalized) {
-        sttTrustDraft[provider] = '';
-        $('#stt-endpoint-trust').checked = false;
-      }
-      trustRow.classList.remove('hidden');
-      note.classList.add('custom');
-      note.textContent = 'Audio and the transcription API credential can be sent to ' + host + '.';
+      note.textContent = t('customEndpoint').replace('{host}', host);
     } catch (error) {
       trustRow.classList.add('hidden');
       input.classList.add('invalid');
@@ -1341,17 +1325,13 @@
     endpointTrustDraft[settings.provider] = $('#endpoint-trust').checked
       ? normalizedOrEmpty($('#base-url').value, settings.provider) : '';
   });
-  $('#stt-base-url').addEventListener('input', () => updateSttControls(true));
-  $('#stt-enabled').addEventListener('change', () => updateSttControls(false));
-  $('#send-auth').addEventListener('change', updateSttKeyPlaceholder);
-  $('#stt-send-auth').addEventListener('change', updateSttKeyPlaceholder);
-  $('#stt-endpoint-trust').addEventListener('change', () => {
-    sttTrustDraft[settings.provider] = $('#stt-endpoint-trust').checked
-      ? normalizedOrEmpty($('#stt-base-url').value, settings.provider) : '';
-  });
   $('#appearance-language').addEventListener('change', () => {
     captureAppearanceFields();
     applyLanguage();
+    updateEndpointNote(false);
+    renderDiagnostics();
+    transcriptCountEl.textContent = currentLanguage() === 'ru' ? `Текст ${transcriptCount}` : `Text ${transcriptCount}`;
+    if (!$('#onboard-scrim').classList.contains('hidden')) { obIndex = 0; renderOnboard(); }
     $('#s-status').textContent = statusText();
   });
   $('#appearance-drag').addEventListener('change', () => { captureAppearanceFields(); applyAppearance(); });
@@ -1398,6 +1378,7 @@
   $('#provider-select').addEventListener('change', (event) => {
     captureProviderFields(settings.provider);
     settings.provider = event.target.value;
+    settings.stt.provider = settings.provider;
     fillProviderFields(settings.provider);
     $('#s-status').textContent = statusText();
   });
@@ -1414,6 +1395,13 @@
     captureProviderFields(settings.provider);
     try {
       for (const provider of providerNames) {
+        if (provider === settings.provider) continue;
+        settings.apiKeys[provider] = '';
+        settings.baseUrls[provider] = '';
+        settings.trustedBaseUrls[provider] = '';
+        if (sttProviderNames.includes(provider)) settings.sttApiKeys[provider] = '';
+      }
+      for (const provider of providerNames) {
         let normalized;
         try { normalized = normalizeEndpointInput(settings.baseUrls[provider], provider); }
         catch (error) { throw settingsValidationError(provider + ' Base URL: ' + error.message, provider, 'llm'); }
@@ -1428,26 +1416,16 @@
         }
       }
 
+      settings.stt.provider = settings.provider;
       for (const provider of sttProviderNames) {
         const route = settings.stt.routes[provider];
-        let normalized;
-        try { normalized = normalizeEndpointInput(route.baseUrl, provider); }
-        catch (error) { throw settingsValidationError(provider + ' STT Base URL: ' + error.message, provider, 'stt'); }
-        route.baseUrl = normalized;
-        if (route.enabled && !route.model) {
-          throw settingsValidationError('Set a transcription model for ' + provider + '.', provider, 'stt');
-        }
-        if (route.enabled && provider === 'compatible' && !normalized) {
-          throw settingsValidationError('Set a separate STT Base URL for compatible transcription.', provider, 'stt');
-        }
-        if (route.enabled && normalized) {
-          if (sttTrustDraft[provider] !== normalized) {
-            throw settingsValidationError('Confirm that you trust the ' + provider + ' transcription destination before saving.', provider, 'stt');
-          }
-          route.trustedBaseUrl = normalized;
-        } else if (!normalized) {
-          route.trustedBaseUrl = '';
-        }
+        route.enabled = provider === settings.provider;
+        if (!route.enabled) continue;
+        route.baseUrl = settings.baseUrls[provider];
+        route.trustedBaseUrl = settings.trustedBaseUrls[provider];
+        route.authMode = provider === 'compatible' ? settings.authModes.compatible : 'bearer';
+        settings.sttApiKeys[provider] = settings.apiKeys[provider];
+        if (!route.model) throw settingsValidationError('Set a transcription model for ' + provider + '.', provider, 'stt-model');
       }
       settings = await cue.settingsSet(settings);
       applyLanguage();
@@ -1458,18 +1436,16 @@
       const message = String(error && error.message ? error.message : error).replace(/^Error invoking remote method '[^']+': Error:\s*/, '');
       if (error.provider && error.provider !== settings.provider) {
         settings.provider = error.provider;
+        settings.stt.provider = settings.provider;
         $('#provider-select').value = settings.provider;
         fillProviderFields(settings.provider);
       }
-      if (error.field === 'stt') {
-        $('#stt-base-url').classList.add('invalid');
-        $('#stt-endpoint-note').className = 's-endpoint-note error';
-        $('#stt-endpoint-note').textContent = message;
-      } else {
-        $('#base-url').classList.add('invalid');
-        $('#endpoint-note').className = 's-endpoint-note error';
-        $('#endpoint-note').textContent = message;
+      if (error.field === 'stt-model') {
+        $('#stt-model').classList.add('invalid');
       }
+      $('#base-url').classList.add('invalid');
+      $('#endpoint-note').className = 's-endpoint-note error';
+      $('#endpoint-note').textContent = message;
       return false;
     }
   }
@@ -1578,7 +1554,7 @@
     {
       icon: '🔑',
       title: 'Connect an AI provider',
-      body: 'cue uses <strong>your own</strong> API key — pick <span class="hl">OpenAI</span>, <span class="hl">Anthropic</span>, <span class="hl">Google Gemini</span>, <span class="hl">Nvidia</span>, or a <span class="hl">Custom OpenAI-compatible</span> endpoint. Official APIs remain the default; custom destinations require explicit trust.<br><br><strong>Tip:</strong> chat and speech-to-text endpoints are separate, so a custom chat gateway never receives meeting audio unless you enable it as an STT route.',
+      body: 'cue uses <strong>one connection</strong> for the whole meeting flow. Pick <span class="hl">OpenAI</span>, <span class="hl">Google Gemini</span>, or a <span class="hl">Custom OpenAI-compatible</span> provider, then enter its API key and optional endpoint once. The same connection powers transcription, answers, summaries, and screen analysis.',
       buttons: [{ label: 'Open cue Settings', action: () => { finishOnboard(); openSettings(); } }]
     },
     {
@@ -1594,19 +1570,63 @@
       body: `How to use cue:<ul><li><span class="kbd">${cmdKey}</span> <span class="kbd">↵</span> — <strong>Assist</strong> with whatever's on screen or being said</li><li><span class="kbd">${cmdKey}</span> <span class="kbd">H</span> — solve a coding problem on screen</li><li>Click <strong>Play</strong> in the top bar to start recording; it changes to <strong>Stop</strong> while active</li><li>Type a question and press <span class="kbd">↵</span></li></ul>Reopen this guide anytime by clicking the <strong>cue logo</strong>. On Windows, use <span class="kbd">Ctrl</span><span class="kbd">⇧</span><span class="kbd">T</span> or the tray icon to show/hide cue. Quit with <span class="kbd">${cmdKey}</span><span class="kbd">⇧</span><span class="kbd">X</span>.`
     }
   ];
+  const OB_STEPS_RU = [
+    {
+      icon: '👋',
+      title: 'Добро пожаловать в Cue',
+      body: 'Cue — приватный ИИ-помощник поверх других окон. Он может <strong>видеть экран</strong>, <strong>слышать встречи</strong> и помогать с ответами или задачами, оставаясь скрытым от большинства трансляций экрана.<br><br>Это знакомство займёт около минуты.'
+    },
+    ...(cue.platform === 'darwin' ? [{
+      icon: '🔐',
+      title: 'Разрешите доступ к экрану и звуку',
+      body: 'Cue нужны два разрешения macOS. Откройте каждый раздел, включите <strong>Cue</strong> и вернитесь сюда.<ul><li><strong>Микрофон</strong> — чтобы слышать вас</li><li><strong>Запись экрана</strong> — чтобы видеть экран и слышать звук встречи</li></ul>',
+      buttons: [
+        { label: 'Открыть настройки микрофона', action: () => cue.openPane('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone') },
+        { label: 'Открыть настройки записи экрана', action: () => cue.openPane('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture') }
+      ]
+    }] : []),
+    ...(cue.platform === 'win32' ? [{
+      icon: '🔐',
+      title: 'Разрешите доступ к микрофону',
+      body: 'Windows должен разрешать микрофон для классических приложений. Включите <strong>Доступ к микрофону</strong> и <strong>Разрешить классическим приложениям доступ к микрофону</strong>. Для захвата экрана и системного звука отдельное разрешение Windows не требуется.',
+      buttons: [{ label: 'Открыть настройки микрофона', action: () => cue.openPane('ms-settings:privacy-microphone') }]
+    }] : []),
+    {
+      icon: '🔑',
+      title: 'Подключите провайдера',
+      body: 'Cue использует <strong>одно подключение</strong> для всей встречи. Выберите OpenAI, Gemini или совместимый провайдер и один раз введите API-ключ и необязательный эндпоинт. Это подключение одновременно используется для расшифровки, ответов, итогов и анализа экрана.',
+      buttons: [{ label: 'Открыть настройки Cue', action: () => { finishOnboard(); openSettings(); } }]
+    },
+    {
+      icon: '🫥',
+      title: 'Оставайтесь скрытыми в Zoom',
+      body: cue.platform === 'darwin'
+        ? 'Cue автоматически скрывается от большинства трансляций экрана. Для Zoom откройте: <strong>Настройки → Демонстрация экрана → Дополнительно → Режим захвата экрана</strong> и выберите режим с фильтрацией окон.'
+        : 'В Windows 10 версии 2004+ и Windows 11 Cue просит систему исключить окно из захвата. Это защита без абсолютной гарантии, поэтому проверьте её перед встречей. Для Zoom выберите режим захвата экрана <strong>с фильтрацией окон</strong>.'
+    },
+    {
+      icon: '✨',
+      title: 'Всё готово',
+      body: `Как пользоваться Cue:<ul><li><span class="kbd">${cmdKey}</span> <span class="kbd">↵</span> — получить помощь по экрану или разговору</li><li><span class="kbd">${cmdKey}</span> <span class="kbd">H</span> — решить задачу с экрана</li><li>Кнопка записи в верхней панели начинает и останавливает запись встречи</li><li>Введите вопрос и нажмите <span class="kbd">↵</span></li></ul>Вернуться к этому знакомству можно по логотипу Cue. В Windows сочетание <span class="kbd">Ctrl</span><span class="kbd">⇧</span><span class="kbd">T</span> показывает или скрывает Cue.`
+    }
+  ];
   let obIndex = 0;
   function renderOnboard() {
-    const step = OB_STEPS[obIndex];
+    const steps = currentLanguage() === 'ru' ? OB_STEPS_RU : OB_STEPS;
+    const step = steps[obIndex];
     $('#ob-icon').textContent = step.icon;
     $('#ob-title').textContent = step.title;
     $('#ob-body').innerHTML = step.body;
     const btns = $('#ob-buttons'); btns.innerHTML = '';
     (step.buttons || []).forEach((b) => { const el = document.createElement('button'); el.textContent = b.label; el.addEventListener('click', b.action); btns.appendChild(el); });
     const dots = $('#ob-dots'); dots.innerHTML = '';
-    OB_STEPS.forEach((_, i) => { const d = document.createElement('span'); if (i === obIndex) d.className = 'on'; dots.appendChild(d); });
+    steps.forEach((_, i) => { const d = document.createElement('span'); if (i === obIndex) d.className = 'on'; dots.appendChild(d); });
     $('#ob-back').style.visibility = obIndex === 0 ? 'hidden' : 'visible';
-    $('#ob-next').textContent = obIndex === OB_STEPS.length - 1 ? 'Done' : 'Next';
-    $('#ob-skip').style.visibility = obIndex === OB_STEPS.length - 1 ? 'hidden' : 'visible';
+    const ru = currentLanguage() === 'ru';
+    $('#ob-next').textContent = obIndex === steps.length - 1 ? (ru ? 'Готово' : 'Done') : (ru ? 'Далее' : 'Next');
+    $('#ob-back').textContent = ru ? 'Назад' : 'Back';
+    $('#ob-skip').textContent = ru ? 'Пропустить' : 'Skip';
+    $('#ob-skip').style.visibility = obIndex === steps.length - 1 ? 'hidden' : 'visible';
   }
   function showOnboard() {
     obIndex = 0;
@@ -1631,7 +1651,10 @@
     closeOnboard();
     if (settings && !settings.onboarded) { settings.onboarded = true; await cue.settingsSet({ onboarded: true }); }
   }
-  $('#ob-next').addEventListener('click', () => { if (obIndex === OB_STEPS.length - 1) finishOnboard(); else { obIndex++; renderOnboard(); } });
+  $('#ob-next').addEventListener('click', () => {
+    const steps = currentLanguage() === 'ru' ? OB_STEPS_RU : OB_STEPS;
+    if (obIndex === steps.length - 1) finishOnboard(); else { obIndex++; renderOnboard(); }
+  });
   $('#ob-back').addEventListener('click', () => { if (obIndex > 0) { obIndex--; renderOnboard(); } });
   $('#ob-skip').addEventListener('click', finishOnboard);
   $('#logo-btn').addEventListener('click', () => void toggleOnboard());

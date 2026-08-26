@@ -10,7 +10,7 @@
   <div id="app">
     <!-- Top-center floating pill toolbar (drag handle) -->
     <div id="toolbar">
-      <button class="tb-hide" id="hide-btn" title="Скрыть основное окно" aria-label="Скрыть основное окно"><span class="panel-toggle-icon"></span></button>
+      <button class="tb-hide on" id="hide-btn" title="Скрыть все панели" aria-label="Скрыть все панели" aria-pressed="true"><span class="panel-toggle-icon"></span></button>
       <div class="tb-divider"></div>
       <div class="capture-control">
         <button class="tb-stop" id="stop-btn" title="Start recording" aria-label="Start recording" aria-pressed="false"></button>
@@ -31,17 +31,19 @@
         <div id="panel-scroll">
         <section id="live-view" aria-label="Живой конспект созвона">
           <div id="panel-topbar">
+            <div id="panel-tools-left" class="panel-tools">
+              <button id="logo-btn" class="more-btn" title="Онбординг" aria-label="Открыть онбординг"></button>
+              <button id="copy-btn" class="more-btn" title="Копировать сообщения" aria-label="Копировать сообщения"></button>
+            </div>
             <div id="capture-diagnostics" aria-label="Диагностика записи">
               <span id="diag-mic" class="diag-pill idle">Микрофон 0 KB</span>
-              <span id="diag-system" class="diag-pill idle">Система 0 KB</span>
-              <span id="diag-stt" class="diag-pill idle">STT ожидание</span>
-              <span id="diag-disk" class="diag-pill idle">Диск ожидание</span>
-              <span id="transcript-count" class="diag-pill idle">Нет реплик</span>
+              <span id="diag-system" class="diag-pill idle">Звук 0 KB</span>
+              <span id="diag-stt" class="diag-pill idle">Речь 0</span>
+              <span id="diag-disk" class="diag-pill idle">Сохранено 0</span>
+              <span id="transcript-count" class="diag-pill idle">Текст 0</span>
             </div>
-            <div id="panel-tools">
-              <button id="logo-btn" class="more-btn" title="Онбординг" aria-label="Открыть онбординг"></button>
+            <div id="panel-tools" class="panel-tools">
               <button id="search-btn" class="more-btn" title="Поиск по встречам" aria-label="Поиск по встречам"></button>
-              <button id="copy-btn" class="more-btn" title="Копировать сообщения" aria-label="Копировать сообщения"></button>
               <button id="more-btn" class="more-btn" title="Settings" aria-label="Settings"></button>
             </div>
           </div>
@@ -120,32 +122,28 @@
         </div>
 
         <section id="settings-provider-pane" class="settings-pane" role="tabpanel" aria-labelledby="settings-provider-tab">
-          <label class="s-label" data-i18n="provider">Provider</label>
-          <div class="s-field"><span data-i18n="provider">Provider</span><select id="provider-select"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option><option value="nvidia">Nvidia</option><option value="compatible">Custom</option></select></div>
+          <div class="provider-intro" data-i18n="providerIntro">One connection powers transcription, answers, summaries and screen analysis.</div>
 
-          <label class="s-label"><span data-i18n="apiEndpoint">API endpoint</span> <span class="s-hint" data-i18n="officialHint">leave blank for the official API</span></label>
-          <div class="s-field"><span data-i18n="baseUrl">Base URL</span><input id="base-url" type="url" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" /></div>
-          <div class="s-endpoint-note" id="endpoint-note"></div>
-          <label class="s-check hidden" id="endpoint-trust-row"><input id="endpoint-trust" type="checkbox" /><span data-i18n="trustApi">I trust this destination for API requests</span></label>
-          <label class="s-check hidden" id="auth-mode-row"><input id="send-auth" type="checkbox" checked /><span data-i18n="sendBearer">Send API key as a Bearer token</span></label>
-
-          <label class="s-label"><span data-i18n="apiKey">API key</span> <span class="s-hint" data-i18n="storedLocally">stored locally in cue-data.json</span></label>
-          <div class="s-field"><span data-i18n="apiKey">API key</span><input id="provider-api-key" type="password" placeholder="sk-..." autocomplete="off" /></div>
-
-          <label class="s-label">Models <span class="s-hint">fast = Smart off · smart = Smart on</span></label>
-          <div class="s-field"><span data-i18n="fastModel">Fast</span><input id="model-fast" type="text" autocomplete="off" /></div>
-          <div class="s-field"><span data-i18n="smartModel">Smart</span><input id="model-smart" type="text" autocomplete="off" /></div>
-
-          <div id="stt-route-group">
-            <label class="s-label"><span data-i18n="transcription">Transcription route</span> <span class="s-hint" data-i18n="separateFromChat">separate from chat</span></label>
-            <label class="s-check"><input id="stt-enabled" type="checkbox" /><span data-i18n="useForSpeech">Use this provider for speech-to-text</span></label>
-            <div class="s-field"><span data-i18n="sttKey">STT key</span><input id="stt-api-key" type="password" placeholder="optional for official API" autocomplete="off" /></div>
-            <label class="s-check hidden" id="stt-auth-mode-row"><input id="stt-send-auth" type="checkbox" checked /><span data-i18n="sendSttBearer">Send STT key as a Bearer token</span></label>
-            <div class="s-field hidden" id="stt-protocol-field"><span data-i18n="sttProtocol">STT protocol</span><select id="stt-protocol"><option value="transcriptions">/audio/transcriptions</option><option value="chat-audio">Chat audio (Gemini)</option></select></div>
-            <div class="s-field"><span data-i18n="sttModel">STT model</span><input id="stt-model" type="text" autocomplete="off" /></div>
-            <div class="s-field"><span data-i18n="sttUrl">STT URL</span><input id="stt-base-url" type="url" autocomplete="off" spellcheck="false" /></div>
-            <div class="s-endpoint-note" id="stt-endpoint-note"></div>
-            <label class="s-check hidden" id="stt-trust-row"><input id="stt-endpoint-trust" type="checkbox" /><span data-i18n="trustAudio">I trust this destination for API keys and audio</span></label>
+          <div class="provider-card" id="analysis-provider-card">
+            <div class="provider-card-head">
+              <div><strong data-i18n="unifiedService">AI provider</strong><span data-i18n="unifiedServiceHint">Used for both meeting transcription and analysis</span></div>
+              <span class="provider-card-badge" data-i18n="allInputs">Audio + text + screen</span>
+            </div>
+            <div class="s-field"><span data-i18n="provider">Provider</span><select id="provider-select"><option value="openai">OpenAI</option><option value="gemini">Gemini</option><option value="compatible">Custom</option></select></div>
+            <div class="s-field"><span data-i18n="apiKey">API key</span><input id="provider-api-key" type="password" placeholder="sk-..." autocomplete="off" /></div>
+            <div class="s-field"><span data-i18n="endpoint">Endpoint</span><input id="base-url" type="url" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" /></div>
+            <div class="s-endpoint-note" id="endpoint-note"></div>
+            <label class="s-check hidden" id="endpoint-trust-row"><input id="endpoint-trust" type="checkbox" /><span data-i18n="trustApi">I trust this destination for API requests</span></label>
+            <div class="settings-advanced">
+              <div class="settings-advanced-title" data-i18n="advanced">Advanced</div>
+              <div class="settings-advanced-body">
+                <div class="s-field"><span data-i18n="fastModel">Fast</span><input id="model-fast" type="text" autocomplete="off" /></div>
+                <div class="s-field"><span data-i18n="smartModel">Smart</span><input id="model-smart" type="text" autocomplete="off" /></div>
+                <div class="s-field"><span data-i18n="sttModel">STT model</span><input id="stt-model" type="text" autocomplete="off" /></div>
+                <div class="s-field hidden" id="stt-protocol-field"><span data-i18n="sttProtocol">STT protocol</span><select id="stt-protocol"><option value="transcriptions">/audio/transcriptions</option><option value="chat-audio">Chat audio</option></select></div>
+                <label class="s-check hidden" id="auth-mode-row"><input id="send-auth" type="checkbox" checked /><span data-i18n="sendBearer">Send API key as a Bearer token</span></label>
+              </div>
+            </div>
           </div>
         </section>
 

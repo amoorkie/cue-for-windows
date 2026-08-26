@@ -26,8 +26,7 @@ app.whenReady().then(async () => {
       const required = [
         'provider-select', 'provider-api-key', 'base-url', 'endpoint-note', 'endpoint-trust', 'auth-mode-row',
         'settings-provider-tab', 'settings-interface-tab', 'settings-provider-pane', 'settings-interface-pane',
-        'model-fast', 'model-smart', 'stt-route-group', 'stt-enabled', 'stt-api-key', 'stt-send-auth',
-        'stt-model', 'stt-base-url', 'stt-endpoint-trust'
+        'model-fast', 'model-smart', 'stt-model'
         , 'appearance-language', 'appearance-drag', 'appearance-color', 'appearance-opacity', 'appearance-opacity-value'
         , 'appearance-text-scale', 'appearance-text-scale-value'
         , 'appearance-accent', 'appearance-blur', 'appearance-blur-value', 'appearance-radius', 'appearance-radius-value', 'appearance-animations', 'appearance-presets', 'appearance-reset'
@@ -60,7 +59,9 @@ app.whenReady().then(async () => {
         && document.querySelectorAll('.color-option').length === 20
         && !!document.getElementById('appearance-opacity').style.getPropertyValue('--range-progress')
         && getComputedStyle(document.getElementById('appearance-animations')).appearance === 'none'
-        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).marginLeft === 'auto'
+        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).marginLeft === '0px'
+        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).position === 'absolute'
+        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).right === '10px'
         && getComputedStyle(document.getElementById('endpoint-trust-row')).alignItems === 'center'
         && parseFloat(getComputedStyle(document.getElementById('endpoint-note')).marginBottom) >= 5;
       document.getElementById('search-btn').click();
@@ -74,6 +75,21 @@ app.whenReady().then(async () => {
         && settingsRect.left > panelRect.right
         && getComputedStyle(document.getElementById('catalog-scrim')).pointerEvents === 'none'
         && getComputedStyle(document.getElementById('settings-scrim')).pointerEvents === 'none';
+      document.getElementById('hide-btn').click();
+      const allPanelsHidden = document.getElementById('panel').classList.contains('collapsed')
+        && document.getElementById('catalog-scrim').classList.contains('hidden')
+        && document.getElementById('settings-scrim').classList.contains('hidden')
+        && document.getElementById('onboard-scrim').classList.contains('hidden')
+        && !document.getElementById('hide-btn').classList.contains('on');
+      document.getElementById('hide-btn').click();
+      const openPanelsRestored = !document.getElementById('panel').classList.contains('collapsed')
+        && !document.getElementById('catalog-scrim').classList.contains('hidden')
+        && !document.getElementById('settings-scrim').classList.contains('hidden')
+        && document.getElementById('onboard-scrim').classList.contains('hidden')
+        && document.getElementById('search-btn').classList.contains('on')
+        && document.getElementById('more-btn').classList.contains('on')
+        && document.getElementById('hide-btn').classList.contains('on');
+      const globalPanelsToggle = allPanelsHidden && openPanelsRestored;
       document.getElementById('search-btn').click();
       const meetingsToggleClosed = document.getElementById('catalog-scrim').classList.contains('hidden')
         && !document.getElementById('search-btn').classList.contains('on');
@@ -89,13 +105,22 @@ app.whenReady().then(async () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
       const onboardingOpened = !document.getElementById('onboard-scrim').classList.contains('hidden')
         && document.getElementById('logo-btn').classList.contains('on');
+      const onboardingRussian = document.getElementById('ob-title').textContent === 'Добро пожаловать в Cue'
+        && document.getElementById('ob-next').textContent === 'Далее'
+        && document.getElementById('ob-skip').textContent === 'Пропустить';
+      document.getElementById('hide-btn').click();
+      const onboardingHiddenWithWorkspace = document.getElementById('onboard-scrim').classList.contains('hidden');
+      document.getElementById('hide-btn').click();
+      const onboardingRestoredWithWorkspace = !document.getElementById('onboard-scrim').classList.contains('hidden')
+        && document.getElementById('logo-btn').classList.contains('on');
       document.getElementById('logo-btn').click();
       await new Promise((resolve) => setTimeout(resolve, 30));
       const onboardingToggleClosed = document.getElementById('onboard-scrim').classList.contains('hidden')
         && !document.getElementById('logo-btn').classList.contains('on');
       document.getElementById('more-btn').click();
       await new Promise((resolve) => setTimeout(resolve, 30));
-      const panelButtonsToggle = meetingsToggleClosed && settingsToggleClosed && onboardingOpened && onboardingToggleClosed
+      const panelButtonsToggle = meetingsToggleClosed && settingsToggleClosed && onboardingOpened && onboardingHiddenWithWorkspace
+        && onboardingRestoredWithWorkspace && onboardingToggleClosed
         && !document.getElementById('settings-scrim').classList.contains('hidden');
       const catalogCards = [...document.querySelectorAll('.catalog-item')];
       const catalogCardsSimplified = catalogCards.length > 0 && catalogCards.every((card) => {
@@ -114,9 +139,21 @@ app.whenReady().then(async () => {
       const endpointNoteRect = document.getElementById('endpoint-note').getBoundingClientRect();
       const endpointTrustRect = document.getElementById('endpoint-trust-row').getBoundingClientRect();
       const endpointHelperSeparated = endpointNoteRect.bottom + 8 <= endpointTrustRect.top
-        && getComputedStyle(document.getElementById('endpoint-note')).position === 'relative'
         && parseFloat(getComputedStyle(document.getElementById('endpoint-note')).paddingTop) >= 8;
+      const endpointHelperLocalized = document.getElementById('endpoint-note').textContent.startsWith('Пользовательский эндпоинт:')
+        && !!document.getElementById('auth-mode-row').dataset.tooltip
+        && /Authorization: Bearer/.test(document.getElementById('auth-mode-row').dataset.tooltip);
+      const providerSetupSimplified = document.querySelectorAll('#settings-provider-pane > .provider-card').length === 1
+        && document.querySelectorAll('#analysis-provider-card > .s-field').length === 3
+        && document.querySelectorAll('#settings-provider-pane .settings-advanced').length === 1
+        && getComputedStyle(document.querySelector('#settings-provider-pane .settings-advanced-body')).display === 'flex'
+        && providerSelect.options.length === 3
+        && !document.getElementById('stt-provider-select')
+        && !document.getElementById('stt-api-key')
+        && !document.getElementById('stt-base-url');
       document.getElementById('model-fast').value = 'local-model';
+      document.getElementById('stt-model').value = 'local-stt-model';
+      document.getElementById('provider-api-key').value = 'shared-test-key';
       document.getElementById('appearance-language').value = 'ru';
       document.getElementById('appearance-color').value = '#243047';
       document.getElementById('appearance-color').dispatchEvent(new Event('input', { bubbles: true }));
@@ -132,7 +169,7 @@ app.whenReady().then(async () => {
       document.getElementById('appearance-radius').dispatchEvent(new Event('input', { bubbles: true }));
       document.getElementById('appearance-animations').checked = false;
       document.getElementById('appearance-animations').dispatchEvent(new Event('change', { bubbles: true }));
-      document.getElementById('send-auth').checked = false;
+      document.getElementById('send-auth').checked = true;
       document.getElementById('endpoint-trust').checked = true;
       document.getElementById('endpoint-trust').dispatchEvent(new Event('change', { bubbles: true }));
       document.getElementById('s-close').click();
@@ -173,22 +210,35 @@ app.whenReady().then(async () => {
         customControlsSkinned,
         meetingIconVisible: !!document.querySelector('#search-btn svg path'),
         sidecarsNonModal,
+        globalPanelsToggle,
         panelButtonsToggle,
+        onboardingRussian,
         catalogCardsSimplified,
         invalidSettingsRemainVisible: !document.getElementById('settings-scrim').classList.contains('hidden'),
         customSelected: providerSelect.value === 'compatible',
         twoSettingsTabs: document.querySelectorAll('[data-settings-tab]').length === 2,
         customPlaceholder: baseInput.placeholder,
         authControlsVisible: !document.getElementById('auth-mode-row').classList.contains('hidden'),
-        sttControlsVisible: !document.getElementById('stt-route-group').classList.contains('hidden'),
+        singleConnectionVisible: !document.getElementById('analysis-provider-card').classList.contains('hidden'),
+        providerSetupSimplified,
         invalidEndpointRejected: /https/i.test(document.getElementById('endpoint-note').textContent),
         endpointHelperSeparated,
+        endpointHelperLocalized,
         trustRevocationBlocked,
         bridgeAvailable: !!(window.cue && window.cue.settingsGet && window.cue.settingsSet && window.cue.sessionDismiss),
         validEndpointSaved: saved.provider === 'compatible'
           && saved.baseUrls.compatible === 'http://localhost:11434/v1'
           && saved.trustedBaseUrls.compatible === 'http://localhost:11434/v1'
-          && saved.authModes.compatible === 'none'
+          && saved.authModes.compatible === 'bearer'
+          && saved.stt.provider === 'compatible'
+          && saved.apiKeys.compatible === 'shared-test-key'
+          && saved.sttApiKeys.compatible === 'shared-test-key'
+          && saved.stt.routes.compatible.enabled === true
+          && saved.stt.routes.compatible.baseUrl === 'http://localhost:11434/v1'
+          && saved.stt.routes.compatible.trustedBaseUrl === 'http://localhost:11434/v1'
+          && saved.stt.routes.compatible.model === 'local-stt-model'
+          && saved.stt.routes.openai.enabled === false
+          && saved.stt.routes.gemini.enabled === false
           && saved.models.compatible.fast === 'local-model'
           && saved.appearance.language === 'ru'
           && saved.appearance.backgroundColor === '#243047'
@@ -213,7 +263,14 @@ app.whenReady().then(async () => {
         quickLabelsRussian: document.querySelector('[data-mode="say"] span:last-child').textContent === 'Что ответить?'
           && document.querySelector('[data-mode="followup"] span:last-child').textContent === 'Что спросить дальше?'
           && document.querySelector('[data-mode="recap"] span:last-child').textContent === 'Краткое резюме',
-        toolbarActionsPolished: document.getElementById('copy-btn').parentElement.id === 'panel-tools'
+        toolbarActionsPolished: document.getElementById('copy-btn').parentElement.id === 'panel-tools-left'
+          && document.getElementById('logo-btn').parentElement.id === 'panel-tools-left'
+          && getComputedStyle(document.getElementById('panel-tools-left')).marginLeft === '0px'
+          && document.getElementById('logo-btn').getBoundingClientRect().left >= document.getElementById('panel').getBoundingClientRect().left
+          && getComputedStyle(document.getElementById('panel-topbar')).display === 'grid'
+          && getComputedStyle(document.getElementById('capture-diagnostics')).justifyContent === 'center'
+          && [...document.querySelectorAll('.diag-pill')].every((pill) => !!pill.dataset.tooltip)
+          && !/ожидание|STT|реплик/i.test(document.getElementById('capture-diagnostics').textContent)
           && !document.getElementById('zoom-in-btn')
           && !document.getElementById('zoom-out-btn')
           && !!document.getElementById('smart-toggle').dataset.tooltip
@@ -227,8 +284,9 @@ app.whenReady().then(async () => {
           && document.querySelectorAll('#mic-activity .mic-wave i').length === 5
           && !document.querySelector('#mic-activity .mic-activity-label')
           && document.getElementById('hide-btn').children.length === 1
-          && !!document.querySelector('#hide-btn .panel-toggle-icon svg path[d*="M21 15"]')
-          && document.getElementById('logo-btn').parentElement.id === 'panel-tools',
+          && !!document.querySelector('#hide-btn .panel-toggle-icon svg rect')
+          && document.getElementById('hide-btn').classList.contains('on')
+          && document.getElementById('hide-btn').getAttribute('aria-pressed') === 'true',
         panelScrollEnabled: getComputedStyle(document.getElementById('panel-scroll')).overflowY === 'auto'
           && getComputedStyle(document.getElementById('panel')).overflow === 'hidden'
           && document.getElementById('composer-dock').parentElement.id === 'panel'
@@ -252,15 +310,19 @@ app.whenReady().then(async () => {
       && result.customControlsSkinned
       && result.meetingIconVisible
       && result.sidecarsNonModal
+      && result.globalPanelsToggle
       && result.panelButtonsToggle
+      && result.onboardingRussian
       && result.catalogCardsSimplified
       && result.invalidSettingsRemainVisible
       && result.customSelected
       && result.twoSettingsTabs
       && result.authControlsVisible
-      && result.sttControlsVisible
+      && result.singleConnectionVisible
+      && result.providerSetupSimplified
       && result.invalidEndpointRejected
       && result.endpointHelperSeparated
+      && result.endpointHelperLocalized
       && result.trustRevocationBlocked
       && result.bridgeAvailable
       && result.validEndpointSaved

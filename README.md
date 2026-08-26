@@ -118,12 +118,10 @@ cue uses **your own** API key, so it's free to run (you only pay your AI provide
 | Provider | Get a key | Notes |
 |---|---|---|
 | **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | One key does everything — **but** for the *listening* features the key must have **Whisper / audio** access (a "restricted" project key that only allows chat will give a 403 on transcription). |
-| **Anthropic (Claude)** | [console.anthropic.com](https://console.anthropic.com) | Great for screen & coding help. Claude has no speech-to-text, so add an OpenAI or Gemini key too if you want the listening features. |
 | **Google Gemini** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | One key does chat + transcription. |
-| **NVIDIA NIM** | [build.nvidia.com](https://build.nvidia.com/) | Uses NVIDIA's OpenAI-compatible endpoint for chat and vision models. |
-| **Custom** | Your gateway or local server | Any standard OpenAI Chat Completions endpoint, including OpenRouter, LM Studio, Ollama, and vLLM. Model vision support is required for screen features. |
+| **Custom** | Your gateway or local server | Must support both the selected chat/vision models and the configured audio transcription protocol. |
 
-Each provider can use an optional custom **Base URL**. Chat and speech-to-text routes — including their credentials and authentication modes — are configured separately, and cue requires explicit confirmation before trusting a custom destination. Blank fields always use fixed official provider URLs. HTTP is accepted only for same-computer loopback endpoints; LAN and public endpoints must use HTTPS.
+Settings use one provider connection for the entire meeting flow. Enter the provider, API key, and optional endpoint once; cue uses them for transcription, answers, summaries, and screen understanding. Models, protocols, and authentication modes live under **Advanced**. A custom endpoint must support both the selected chat/vision models and the configured audio transcription protocol. cue requires explicit confirmation before sending the key, audio, text, or screenshots to a custom destination. HTTP is accepted only for same-computer loopback endpoints; LAN and public endpoints must use HTTPS.
 
 Your key is stored **only on your computer** (in `cue-data.json`) and is sent only to the official provider or custom destination you explicitly selected and trusted. cue has no server and collects nothing.
 

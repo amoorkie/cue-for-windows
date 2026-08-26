@@ -44,9 +44,10 @@ const DEFAULTS = {
     compatible: { fast: '', smart: '' }
   },
   stt: {
+    provider: 'openai',
     routes: {
       openai: { enabled: true, baseUrl: '', trustedBaseUrl: '', model: 'whisper-1', authMode: 'bearer' },
-      gemini: { enabled: true, baseUrl: '', trustedBaseUrl: '', model: 'gemini-2.5-flash', authMode: 'bearer' },
+      gemini: { enabled: false, baseUrl: '', trustedBaseUrl: '', model: 'gemini-2.5-flash', authMode: 'bearer' },
       compatible: { enabled: false, baseUrl: '', trustedBaseUrl: '', model: '', authMode: 'bearer', protocol: 'transcriptions' }
     }
   }
@@ -174,6 +175,7 @@ function load() {
   catch { data = deepMerge(DEFAULTS, {}); }
   data.baseUrls = normalizeBaseUrls(data.baseUrls, false);
   data.trustedBaseUrls = normalizeTrustedBaseUrls(data.trustedBaseUrls);
+  data.stt.provider = STT_PROVIDERS.includes(data.stt && data.stt.provider) ? data.stt.provider : DEFAULTS.stt.provider;
   data.stt.routes = normalizeSttRoutes(data.stt && data.stt.routes, false);
   if (data.sttModel) {
     data.stt.routes.openai.model = String(data.sttModel).trim() || data.stt.routes.openai.model;
@@ -190,13 +192,23 @@ function load() {
       && !!(data.models.compatible && data.models.compatible[tier])
       && (!!data.apiKeys.compatible || data.authModes.compatible === 'none');
   };
-  if (!hasUsableConfig(data.provider)) {
-    const validProviders = PROVIDERS;
-    const active = validProviders.find(hasUsableConfig);
+  if (!STT_PROVIDERS.includes(data.provider) || !hasUsableConfig(data.provider)) {
+    const active = STT_PROVIDERS.find(hasUsableConfig);
     if (active) {
       data.provider = active;
       // We don't save() here so we don't spam disk, it will persist on next save.
     }
+  }
+  if (!STT_PROVIDERS.includes(data.provider)) data.provider = 'openai';
+  data.stt.provider = data.provider;
+  for (const provider of STT_PROVIDERS) {
+    const route = data.stt.routes[provider];
+    route.enabled = provider === data.provider;
+    if (!route.enabled) continue;
+    route.baseUrl = data.baseUrls[provider];
+    route.trustedBaseUrl = data.trustedBaseUrls[provider];
+    route.authMode = provider === 'compatible' ? data.authModes.compatible : 'bearer';
+    data.sttApiKeys[provider] = data.apiKeys[provider];
   }
   
   return data;
@@ -223,7 +235,9 @@ module.exports = {
       for (const provider of STT_PROVIDERS) {
         mergedRoutes[provider] = { ...data.stt.routes[provider], ...(routePatch[provider] || {}) };
       }
-      next.stt = { ...data.stt, ...(patch.stt || {}), routes: normalizeSttRoutes(mergedRoutes, true) };
+      const sttProvider = patch.stt && patch.stt.provider !== undefined ? patch.stt.provider : data.stt.provider;
+      if (!STT_PROVIDERS.includes(sttProvider)) throw new Error('Unknown transcription provider: ' + sttProvider);
+      next.stt = { ...data.stt, ...(patch.stt || {}), provider: sttProvider, routes: normalizeSttRoutes(mergedRoutes, true) };
       for (const provider of STT_PROVIDERS) {
         const route = next.stt.routes[provider];
         if (route.enabled) validateTrustedDestination(route.baseUrl, route.trustedBaseUrl, provider + ' transcription Base URL');
