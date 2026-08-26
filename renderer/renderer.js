@@ -209,7 +209,7 @@
 
   // ---- paint icons -------------------------------------------------------
   $('#logo-btn').innerHTML = icon('logo', { size: 18 });
-  $('.tb-hide .panel-toggle-icon').innerHTML = icon('panel-top', { size: 16, stroke: 1.8 });
+  $('.tb-hide .panel-toggle-icon').innerHTML = icon('message-square', { size: 16, stroke: 1.8 });
   $('#stop-btn').innerHTML = icon('play', { size: 15 });
   document.querySelector('.act[data-mode="assist"] .ic').innerHTML = icon('sparkles', { size: 16 });
   document.querySelector('.act[data-mode="say"] .ic').innerHTML = icon('wand-sparkles', { size: 16 });

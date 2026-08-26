@@ -227,7 +227,7 @@ app.whenReady().then(async () => {
           && document.querySelectorAll('#mic-activity .mic-wave i').length === 5
           && !document.querySelector('#mic-activity .mic-activity-label')
           && document.getElementById('hide-btn').children.length === 1
-          && document.querySelectorAll('#hide-btn .panel-toggle-icon svg rect').length === 1
+          && !!document.querySelector('#hide-btn .panel-toggle-icon svg path[d*="M21 15"]')
           && document.getElementById('logo-btn').parentElement.id === 'panel-tools',
         panelScrollEnabled: getComputedStyle(document.getElementById('panel-scroll')).overflowY === 'auto'
           && getComputedStyle(document.getElementById('panel')).overflow === 'hidden'
