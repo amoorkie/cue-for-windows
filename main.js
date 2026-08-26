@@ -175,7 +175,10 @@ function createTray() {
 // -------- window --------
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
-  const W = 700, H = 600;
+  // A wide transparent host lets non-modal sidecars sit beside the centered
+  // assistant while the empty areas remain click-through.
+  const W = Math.min(1600, workArea.width);
+  const H = Math.min(720, workArea.height - 12);
   win = new BrowserWindow({
     width: W,
     height: H,
@@ -529,6 +532,12 @@ ipcMain.handle('capture:toggle', () => setCapturing(!state.capturing));
 ipcMain.handle('capture:finish-raw', () => state.capturing ? setCapturing(false, { rawOnly: true }) : ensureRawTranscript('Сохранено вручную без AI-итога.'));
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
 ipcMain.handle('sessions:list', () => sessionJournal.listIncomplete());
+ipcMain.handle('sessions:dismiss', async (_e, filePath) => {
+  await sessionJournal.dismiss(filePath);
+  recoverySessions = await sessionJournal.listIncomplete();
+  send('recovery:available', { sessions: recoverySessions });
+  return recoverySessions;
+});
 ipcMain.handle('sessions:open', async (_e, filePath) => {
   const loaded = await sessionJournal.load(filePath);
   transcript.length = 0;
