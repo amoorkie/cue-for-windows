@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('cue', {
   sessionOpen: (filePath) => ipcRenderer.invoke('sessions:open', filePath),
   sessionSummary: (filePath) => ipcRenderer.invoke('sessions:summary', filePath),
   sessionContinue: (filePath) => ipcRenderer.invoke('sessions:continue', filePath),
+  sessionDismiss: (filePath) => ipcRenderer.invoke('sessions:dismiss', filePath),
   catalogSearch: (query) => ipcRenderer.invoke('catalog:search', query),
   catalogOpen: (filePath) => ipcRenderer.invoke('catalog:open', filePath),
   catalogExport: (filePath, format) => ipcRenderer.invoke('catalog:export', filePath, format),

@@ -6,9 +6,210 @@
   const cmdKey = cue.platform === 'darwin' ? '⌘' : 'Ctrl';
   const isCmdOrCtrl = (e) => cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
 
+  const customControls = [];
+  function closeCustomPopovers(except) {
+    document.querySelectorAll('.custom-select.open, .color-control.open').forEach((control) => {
+      if (control === except) return;
+      control.classList.remove('open');
+      const trigger = control.querySelector('[aria-expanded]');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function upgradeSelect(select) {
+    const control = document.createElement('div');
+    control.className = 'custom-select';
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'custom-select-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    const value = document.createElement('span');
+    value.className = 'custom-select-value';
+    const chevron = document.createElement('span');
+    chevron.className = 'custom-select-chevron';
+    chevron.innerHTML = icon('chevron-down', { size: 14 });
+    trigger.append(value, chevron);
+    const menu = document.createElement('div');
+    menu.className = 'custom-select-menu';
+    menu.setAttribute('role', 'listbox');
+    control.append(trigger, menu);
+    select.parentNode.insertBefore(control, select);
+    control.appendChild(select);
+    select.classList.add('native-control-source');
+
+    const sync = () => {
+      const selected = select.options[select.selectedIndex] || select.options[0];
+      value.textContent = selected ? selected.textContent : '';
+      menu.innerHTML = '';
+      [...select.options].forEach((option) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'custom-select-option';
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', String(option.value === select.value));
+        item.textContent = option.textContent;
+        if (option.value === select.value) item.classList.add('selected');
+        item.addEventListener('click', () => {
+          select.value = option.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          sync();
+          closeCustomPopovers();
+          trigger.focus();
+        });
+        menu.appendChild(item);
+      });
+    };
+    trigger.addEventListener('click', () => {
+      const opening = !control.classList.contains('open');
+      closeCustomPopovers(control);
+      control.classList.toggle('open', opening);
+      trigger.setAttribute('aria-expanded', String(opening));
+      if (opening) (menu.querySelector('.selected') || menu.firstElementChild)?.focus();
+    });
+    select.addEventListener('change', sync);
+    sync();
+    customControls.push(sync);
+  }
+
+  function upgradeColorInput(input) {
+    const control = document.createElement('div');
+    control.className = 'color-control';
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'color-trigger';
+    trigger.setAttribute('aria-haspopup', 'dialog');
+    trigger.setAttribute('aria-expanded', 'false');
+    const swatch = document.createElement('span');
+    swatch.className = 'color-trigger-swatch';
+    const label = document.createElement('span');
+    label.className = 'color-trigger-label';
+    trigger.append(swatch, label);
+    const popover = document.createElement('div');
+    popover.className = 'color-popover';
+    const palette = document.createElement('div');
+    palette.className = 'color-palette';
+    const colors = ['#08090c', '#14161c', '#101827', '#243047', '#3c83f5', '#7c8cff', '#22c55e', '#d5a85b', '#ef4444', '#f5f5f5'];
+    const hex = document.createElement('input');
+    hex.className = 'color-hex';
+    hex.type = 'text';
+    hex.maxLength = 7;
+    hex.spellcheck = false;
+    const apply = (next) => {
+      if (!/^#[0-9a-f]{6}$/i.test(next)) return false;
+      input.value = next.toLowerCase();
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    };
+    colors.forEach((color) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'color-option';
+      option.style.setProperty('--option-color', color);
+      option.title = color;
+      option.addEventListener('click', () => { apply(color); closeCustomPopovers(); trigger.focus(); });
+      palette.appendChild(option);
+    });
+    hex.addEventListener('change', () => { if (!apply(hex.value.trim())) hex.classList.add('invalid'); else { hex.classList.remove('invalid'); closeCustomPopovers(); } });
+    hex.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); hex.dispatchEvent(new Event('change')); } });
+    popover.append(palette, hex);
+    control.append(trigger, popover);
+    input.parentNode.insertBefore(control, input);
+    control.appendChild(input);
+    input.classList.add('native-control-source');
+    const sync = () => { swatch.style.background = input.value; label.textContent = input.value.toUpperCase(); hex.value = input.value.toUpperCase(); };
+    input.addEventListener('input', sync);
+    trigger.addEventListener('click', () => {
+      const opening = !control.classList.contains('open');
+      closeCustomPopovers(control);
+      control.classList.toggle('open', opening);
+      trigger.setAttribute('aria-expanded', String(opening));
+      if (opening) setTimeout(() => hex.focus(), 0);
+    });
+    sync();
+    customControls.push(sync);
+  }
+
+  document.querySelectorAll('select').forEach(upgradeSelect);
+  document.querySelectorAll('input[type="color"]').forEach(upgradeColorInput);
+  document.querySelectorAll('input[type="range"]').forEach((input) => {
+    const sync = () => {
+      const min = Number(input.min || 0);
+      const max = Number(input.max || 100);
+      const progress = max > min ? ((Number(input.value) - min) / (max - min)) * 100 : 0;
+      input.style.setProperty('--range-progress', `${Math.max(0, Math.min(100, progress))}%`);
+    };
+    input.addEventListener('input', sync);
+    sync();
+    customControls.push(sync);
+  });
+  document.addEventListener('pointerdown', (event) => { if (!event.target.closest('.custom-select, .color-control')) closeCustomPopovers(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeCustomPopovers(); });
+
+  // ---- custom tooltips --------------------------------------------------
+  const tooltip = $('#custom-tooltip');
+  let tooltipTarget = null;
+  function setTooltip(element, text) {
+    if (!element) return;
+    element.removeAttribute('title');
+    if (text) element.dataset.tooltip = text;
+    else delete element.dataset.tooltip;
+  }
+  function adoptNativeTooltip(element) {
+    if (!element || !element.getAttribute) return;
+    const title = element.getAttribute('title');
+    if (title) setTooltip(element, title);
+  }
+  function positionTooltip(target) {
+    const rect = target.getBoundingClientRect();
+    const box = tooltip.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.max(margin, Math.min(window.innerWidth - box.width - margin, rect.left + rect.width / 2 - box.width / 2));
+    let top = rect.top - box.height - 10;
+    const below = top < margin;
+    if (below) top = rect.bottom + 10;
+    tooltip.style.left = `${Math.round(left)}px`;
+    tooltip.style.top = `${Math.round(top)}px`;
+    tooltip.classList.toggle('below', below);
+  }
+  function showTooltip(target) {
+    const text = target && target.dataset ? target.dataset.tooltip : '';
+    if (!text) return;
+    tooltipTarget = target;
+    tooltip.textContent = text;
+    tooltip.classList.remove('hidden');
+    requestAnimationFrame(() => { if (tooltipTarget === target) positionTooltip(target); });
+  }
+  function hideTooltip() {
+    tooltipTarget = null;
+    tooltip.classList.add('hidden');
+  }
+  document.querySelectorAll('[title]').forEach(adoptNativeTooltip);
+  new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes') adoptNativeTooltip(mutation.target);
+      mutation.addedNodes.forEach((node) => {
+        if (!(node instanceof Element)) return;
+        adoptNativeTooltip(node);
+        node.querySelectorAll?.('[title]').forEach(adoptNativeTooltip);
+      });
+    });
+  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['title'] });
+  document.addEventListener('pointerover', (event) => {
+    const target = event.target.closest?.('[data-tooltip]');
+    if (target && target !== tooltipTarget) showTooltip(target);
+  });
+  document.addEventListener('pointerout', (event) => {
+    if (tooltipTarget && !tooltipTarget.contains(event.relatedTarget)) hideTooltip();
+  });
+  document.addEventListener('focusin', (event) => { const target = event.target.closest?.('[data-tooltip]'); if (target) showTooltip(target); });
+  document.addEventListener('focusout', hideTooltip);
+  window.addEventListener('resize', hideTooltip);
+  document.addEventListener('scroll', hideTooltip, true);
+
   // ---- paint icons -------------------------------------------------------
   $('#logo-btn').innerHTML = icon('logo', { size: 18 });
-  $('.tb-hide .chev').innerHTML = icon('chevron-down', { size: 14 });
+  $('.tb-hide .panel-toggle-icon').innerHTML = icon('message-square', { size: 16, stroke: 1.8 });
   $('#stop-btn').innerHTML = icon('play', { size: 15 });
   document.querySelector('.act[data-mode="assist"] .ic').innerHTML = icon('sparkles', { size: 16 });
   document.querySelector('.act[data-mode="say"] .ic').innerHTML = icon('wand-sparkles', { size: 16 });
@@ -17,8 +218,8 @@
   $('#finish-raw-btn .ic').innerHTML = icon('save', { size: 16 });
   $('#smart-toggle .ic').innerHTML = icon('zap', { size: 14 });
   $('#copy-btn').innerHTML = icon('copy', { size: 16 });
-  $('#search-btn').innerHTML = icon('search', { size: 16 });
-  $('#more-btn').innerHTML = icon('more-horizontal', { size: 18 });
+  $('#search-btn').innerHTML = icon('calendar-days', { size: 16 });
+  $('#more-btn').innerHTML = icon('settings', { size: 16 });
   $('#send-btn').innerHTML = icon('play', { size: 15 });
 
   // ---- state -------------------------------------------------------------
@@ -30,25 +231,25 @@
   const UI_TEXT = {
     en: {
       hide: 'Hide', assist: 'Assist', say: 'What should I say?', followup: 'Follow-up questions', recap: 'Recap', smart: 'Smart', copy: 'Copy messages',
-      settings: 'Settings', done: 'Done', provider: 'Provider', apiEndpoint: 'API endpoint', officialHint: 'leave blank for the official API',
+      settings: 'Settings', done: 'Done', provider: 'Provider', providerTab: 'Provider', interfaceTab: 'Interface', apiKey: 'API key', apiEndpoint: 'API endpoint', officialHint: 'leave blank for the official API',
       baseUrl: 'Base URL', trustApi: 'I trust this destination for API requests', sendBearer: 'Send API key as a Bearer token',
       apiKeys: 'API keys', storedLocally: 'stored locally in cue-data.json', models: 'Models', modelHint: 'fast = Smart off · smart = Smart on',
       fastModel: 'Fast', smartModel: 'Smart', transcription: 'Transcription route', separateFromChat: 'separate from chat',
       useForSpeech: 'Use this provider for speech-to-text', sttKey: 'STT key', sendSttBearer: 'Send STT key as a Bearer token',
       sttModel: 'STT model', sttUrl: 'STT URL', sttProtocol: 'STT protocol', trustAudio: 'I trust this destination for API keys and audio', appearance: 'Appearance',
-      language: 'Language', windowDrag: 'Allow dragging the cue window', backgroundColor: 'Background', opacity: 'Opacity',
+      language: 'Language', windowDrag: 'Drag the Cue window', backgroundColor: 'Background', accentColor: 'Accent', opacity: 'Opacity', textSize: 'Text size', blurStrength: 'Blur', cornerRadius: 'Corners', animations: 'Interface animations', themes: 'Themes', themeGraphite: 'Graphite', themeMidnight: 'Midnight', themeObsidian: 'Obsidian', themeArctic: 'Arctic', themeForest: 'Forest', themeWine: 'Wine', glassAppearance: 'Glass appearance', layout: 'Layout', behavior: 'Behavior', resetAppearance: 'Reset appearance',
       placeholder: 'Ask about your screen or conversation, or {key} {enter} for Assist', example: '“A discounted cash flow model values a company by projecting future free cash flows and discounting them to present value using the weighted average cost of capital.”',
       active: 'Active', customApi: 'custom API', officialApi: 'official API', apiNotSet: 'API not set', keys: 'keys', stt: 'STT', liveTranscript: 'Live transcript', hints: 'Cue hints', ready: 'Ready', listening: 'Listening', generating: 'Generating', error: 'Error'
     },
     ru: {
       hide: 'Скрыть', assist: 'Помоги', say: 'Что ответить?', followup: 'Что спросить дальше?', recap: 'Краткое резюме', smart: 'Умный режим', copy: 'Скопировать сообщения',
-      settings: 'Настройки', done: 'Готово', provider: 'Провайдер', apiEndpoint: 'API endpoint', officialHint: 'пусто — официальный API',
+      settings: 'Настройки', done: 'Готово', provider: 'Провайдер', providerTab: 'Провайдер', interfaceTab: 'Интерфейс', apiKey: 'API-ключ', apiEndpoint: 'API endpoint', officialHint: 'пусто — официальный API',
       baseUrl: 'Базовый URL', trustApi: 'Я доверяю этому адресу для API-запросов', sendBearer: 'Отправлять API-ключ как Bearer-токен',
       apiKeys: 'API-ключи', storedLocally: 'хранятся локально в cue-data.json', models: 'Модели', modelHint: 'быстрый = Smart выкл. · умный = Smart вкл.',
       fastModel: 'Быстрая', smartModel: 'Умная', transcription: 'Маршрут расшифровки', separateFromChat: 'отдельно от чата',
       useForSpeech: 'Использовать провайдер для распознавания речи', sttKey: 'Ключ STT', sendSttBearer: 'Отправлять STT-ключ как Bearer-токен',
       sttModel: 'Модель STT', sttUrl: 'URL STT', sttProtocol: 'Протокол STT', trustAudio: 'Я доверяю этому адресу для API-ключа и аудио', appearance: 'Внешний вид',
-      language: 'Язык интерфейса', windowDrag: 'Разрешить перетаскивание окна cue', backgroundColor: 'Цвет фона', opacity: 'Прозрачность',
+      language: 'Язык интерфейса', windowDrag: 'Перетаскивать окно Cue', backgroundColor: 'Фон', accentColor: 'Акцент', opacity: 'Прозрачность', textSize: 'Размер текста', blurStrength: 'Размытие', cornerRadius: 'Скругление', animations: 'Анимации интерфейса', themes: 'Готовые темы', themeGraphite: 'Графит', themeMidnight: 'Полночь', themeObsidian: 'Обсидиан', themeArctic: 'Арктика', themeForest: 'Лес', themeWine: 'Вино', glassAppearance: 'Стекло и цвета', layout: 'Размер текста', behavior: 'Поведение', resetAppearance: 'Сбросить оформление',
       placeholder: 'Спроси про экран или разговор, или нажми {key} {enter} для помощи', example: '«Модель дисконтированных денежных потоков оценивает компанию через прогноз свободного денежного потока и приведение его к текущей стоимости по WACC.»',
       active: 'Активен', customApi: 'кастомный API', officialApi: 'официальный API', apiNotSet: 'API не задан', keys: 'ключи', stt: 'STT', liveTranscript: 'Живой конспект', hints: 'Подсказки', ready: 'Готово', listening: 'Слушаю', generating: 'Генерирую', error: 'Ошибка'
     }
@@ -67,7 +268,7 @@
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
     button.setAttribute('aria-label', label);
-    button.title = label;
+    setTooltip(button, label);
   }
 
   function applyLanguage() {
@@ -79,11 +280,30 @@
     const select = $('#appearance-language');
     if (select) select.value = language;
     const settingsButton = $('#more-btn');
-    if (settingsButton) settingsButton.title = t('settings');
+    if (settingsButton) setTooltip(settingsButton, t('settings'));
+    const hideButton = $('#hide-btn');
+    if (hideButton) {
+      const collapsed = $('#panel').classList.contains('collapsed');
+      const panelLabel = collapsed
+        ? (language === 'ru' ? 'Показать основное окно' : 'Show main window')
+        : (language === 'ru' ? 'Скрыть основное окно' : 'Hide main window');
+      setTooltip(hideButton, panelLabel);
+      hideButton.setAttribute('aria-label', panelLabel);
+    }
+    const onboardButton = $('#logo-btn');
+    if (onboardButton) {
+      const onboardLabel = language === 'ru' ? 'Открыть знакомство с Cue' : 'Open Cue introduction';
+      setTooltip(onboardButton, onboardLabel);
+      onboardButton.setAttribute('aria-label', onboardLabel);
+    }
     const copyButton = $('#copy-btn');
-    if (copyButton) { copyButton.title = t('copy'); copyButton.setAttribute('aria-label', t('copy')); }
+    if (copyButton) { setTooltip(copyButton, t('copy')); copyButton.setAttribute('aria-label', t('copy')); }
     const sendButton = $('#send-btn');
-    if (sendButton) sendButton.title = language === 'ru' ? 'Отправить' : 'Send';
+    if (sendButton) setTooltip(sendButton, language === 'ru' ? 'Отправить' : 'Send');
+    setTooltip($('#smart-toggle'), language === 'ru'
+      ? 'Использует более сильную модель для сложных вопросов. Ответ может занять немного больше времени.'
+      : 'Uses a stronger model for complex questions. The answer may take a little longer.');
+    customControls.forEach((sync) => sync());
     renderCaptureControl($('#stop-btn').classList.contains('active'));
   }
 
@@ -94,10 +314,25 @@
   }
 
   function applyAppearance() {
-    const appearance = settings && settings.appearance ? settings.appearance : { language: 'ru', windowDrag: true, backgroundColor: '#14161c', backgroundOpacity: 0.72 };
+    const appearance = settings && settings.appearance ? settings.appearance : { language: 'ru', windowDrag: true, backgroundColor: '#14161c', accentColor: '#3c83f5', backgroundOpacity: 0.72, blurStrength: 40, cornerRadius: 24, animations: true, textScale: 1, panelWidth: 624, catalogWidth: 440, settingsWidth: 440, panelHeight: 540, catalogHeight: 690, settingsHeight: 690, panelOffsetY: 0, catalogTop: 14, settingsTop: 14 };
     const [r, g, b] = hexToRgb(appearance.backgroundColor);
-    const opacity = Math.min(0.95, Math.max(0.2, Number(appearance.backgroundOpacity) || 0.72));
+    const opacity = Math.min(0.98, Math.max(0.2, Number(appearance.backgroundOpacity) || 0.72));
     document.documentElement.style.setProperty('--glass-bg', `rgba(${r}, ${g}, ${b}, ${opacity})`);
+    document.documentElement.style.setProperty('--accent', appearance.accentColor || '#3c83f5');
+    document.documentElement.style.setProperty('--accent-hi', appearance.accentColor || '#3c83f5');
+    document.documentElement.style.setProperty('--glass-blur', `${appearance.blurStrength ?? 40}px`);
+    document.documentElement.style.setProperty('--r-panel', `${appearance.cornerRadius || 24}px`);
+    document.documentElement.style.setProperty('--text-zoom', String(appearance.textScale || 1));
+    document.documentElement.style.setProperty('--panel-width', `${appearance.panelWidth || 624}px`);
+    document.documentElement.style.setProperty('--catalog-width', `${appearance.catalogWidth || appearance.sidecarWidth || 440}px`);
+    document.documentElement.style.setProperty('--settings-width', `${appearance.settingsWidth || appearance.sidecarWidth || 440}px`);
+    document.documentElement.style.setProperty('--panel-height', `${appearance.panelHeight || 540}px`);
+    document.documentElement.style.setProperty('--catalog-height', `${appearance.catalogHeight || 690}px`);
+    document.documentElement.style.setProperty('--settings-height', `${appearance.settingsHeight || 690}px`);
+    document.documentElement.style.setProperty('--panel-offset-y', `${appearance.panelOffsetY || 0}px`);
+    document.documentElement.style.setProperty('--catalog-top', `${appearance.catalogTop ?? 14}px`);
+    document.documentElement.style.setProperty('--settings-top', `${appearance.settingsTop ?? 14}px`);
+    document.documentElement.dataset.animations = appearance.animations === false ? 'off' : 'on';
     $('#app').classList.toggle('drag-enabled', appearance.windowDrag !== false);
     const opacityInput = $('#appearance-opacity');
     const opacityValue = $('#appearance-opacity-value');
@@ -105,6 +340,24 @@
     if (opacityValue) opacityValue.textContent = Math.round(opacity * 100) + '%';
     const colorInput = $('#appearance-color');
     if (colorInput) colorInput.value = appearance.backgroundColor;
+    const accentInput = $('#appearance-accent');
+    if (accentInput) accentInput.value = appearance.accentColor || '#3c83f5';
+    const blurInput = $('#appearance-blur');
+    const blurValue = $('#appearance-blur-value');
+    if (blurInput) blurInput.value = String(appearance.blurStrength ?? 40);
+    if (blurValue) blurValue.textContent = String(appearance.blurStrength ?? 40);
+    const radiusInput = $('#appearance-radius');
+    const radiusValue = $('#appearance-radius-value');
+    if (radiusInput) radiusInput.value = String(appearance.cornerRadius || 24);
+    if (radiusValue) radiusValue.textContent = String(appearance.cornerRadius || 24);
+    const textScaleInput = $('#appearance-text-scale');
+    const textScaleValue = $('#appearance-text-scale-value');
+    const textPixels = Math.round((appearance.textScale || 1) * 16);
+    if (textScaleInput) textScaleInput.value = String(textPixels);
+    if (textScaleValue) textScaleValue.textContent = textPixels + ' px';
+    const animationsInput = $('#appearance-animations');
+    if (animationsInput) animationsInput.checked = appearance.animations !== false;
+    customControls.forEach((sync) => sync());
   }
 
   function captureAppearanceFields() {
@@ -112,7 +365,12 @@
     settings.appearance.language = $('#appearance-language').value === 'en' ? 'en' : 'ru';
     settings.appearance.windowDrag = !!$('#appearance-drag').checked;
     settings.appearance.backgroundColor = /^#[0-9a-f]{6}$/i.test($('#appearance-color').value) ? $('#appearance-color').value.toLowerCase() : '#14161c';
-    settings.appearance.backgroundOpacity = Math.min(0.95, Math.max(0.2, Number($('#appearance-opacity').value || 72) / 100));
+    settings.appearance.accentColor = /^#[0-9a-f]{6}$/i.test($('#appearance-accent').value) ? $('#appearance-accent').value.toLowerCase() : '#3c83f5';
+    settings.appearance.backgroundOpacity = Math.min(0.98, Math.max(0.2, Number($('#appearance-opacity').value || 72) / 100));
+    settings.appearance.blurStrength = Math.min(60, Math.max(0, Number($('#appearance-blur').value || 40)));
+    settings.appearance.cornerRadius = Math.min(32, Math.max(10, Number($('#appearance-radius').value || 24)));
+    settings.appearance.animations = !!$('#appearance-animations').checked;
+    settings.appearance.textScale = Math.min(1.5, Math.max(0.75, Number($('#appearance-text-scale').value || 16) / 16));
   }
 
   const messages = $('#messages');
@@ -304,6 +562,11 @@
   $('#hide-btn').addEventListener('click', () => {
     const collapsed = $('#panel').classList.toggle('collapsed');
     $('#hide-btn').classList.toggle('collapsed', collapsed);
+    const label = collapsed
+      ? (currentLanguage() === 'ru' ? 'Показать основное окно' : 'Show main window')
+      : (currentLanguage() === 'ru' ? 'Скрыть основное окно' : 'Hide main window');
+    setTooltip($('#hide-btn'), label);
+    $('#hide-btn').setAttribute('aria-label', label);
   });
 
   // Stop = start/stop listening. Kick off system-audio capture straight from the click so
@@ -314,6 +577,28 @@
   const captureMetrics = { micBytes: 0, systemBytes: 0, stt: 'idle', disk: 'idle', provider: '' };
   const usefulAudioAt = { mic: 0, system: 0 };
   let silenceWarnedAt = 0;
+  let micVisualLevel = 0;
+  let micVisualTarget = 0;
+  let micVisualFrame = 0;
+
+  function renderMicActivity() {
+    micVisualFrame = 0;
+    const rising = micVisualTarget > micVisualLevel;
+    micVisualLevel += (micVisualTarget - micVisualLevel) * (rising ? 0.58 : 0.2);
+    micVisualTarget *= 0.78;
+    const profiles = [0.48, 0.78, 1, 0.7, 0.44];
+    document.querySelectorAll('#mic-activity .mic-wave i').forEach((bar, index) => {
+      const scale = 0.18 + micVisualLevel * profiles[index] * 0.82;
+      bar.style.transform = `scaleY(${scale.toFixed(3)})`;
+    });
+    if (micVisualLevel > 0.012 || micVisualTarget > 0.012) micVisualFrame = requestAnimationFrame(renderMicActivity);
+  }
+
+  function setMicActivityLevel(rms) {
+    const normalized = captureWanted ? Math.min(1, Math.sqrt(Math.max(0, rms - 100) / 5000)) : 0;
+    micVisualTarget = Math.max(micVisualTarget, normalized);
+    if (!micVisualFrame) micVisualFrame = requestAnimationFrame(renderMicActivity);
+  }
 
   function formatBytes(value) { return value < 1024 * 1024 ? `${Math.round(value / 1024)} KB` : `${(value / 1024 / 1024).toFixed(1)} MB`; }
   function setDiag(id, state, text) {
@@ -338,7 +623,9 @@
   }
   function noteAudio(channel, data) {
     captureMetrics[channel === 'mic' ? 'micBytes' : 'systemBytes'] += data.byteLength || 0;
-    if (pcmRms(data) >= 240) usefulAudioAt[channel] = Date.now();
+    const rms = pcmRms(data);
+    if (rms >= 240) usefulAudioAt[channel] = Date.now();
+    if (channel === 'mic') setMicActivityLevel(rms);
     renderDiagnostics();
   }
   setInterval(() => {
@@ -375,6 +662,15 @@
     indicator.classList.toggle('starting', captureWanted && !ready && !warning);
     indicator.classList.toggle('warning', warning);
     $('#stop-btn').classList.toggle('capture-warning', warning);
+    const micActivity = $('#mic-activity');
+    const micState = !captureWanted ? 'idle' : captureHealth.mic;
+    micActivity.classList.toggle('idle', micState === 'idle');
+    micActivity.classList.toggle('starting', micState === 'starting');
+    micActivity.classList.toggle('recording', micState === 'ok');
+    micActivity.classList.toggle('error', micState === 'error');
+    const micStatus = micState === 'ok' ? 'запись идёт' : micState === 'starting' ? 'подключение' : micState === 'error' ? 'ошибка' : 'запись выключена';
+    micActivity.setAttribute('aria-label', `Микрофон: ${micStatus}`);
+    if (!captureWanted) setMicActivityLevel(0);
     renderDiagnostics();
   }
 
@@ -580,8 +876,7 @@
     if (!el) {
       el = document.createElement('div');
       el.id = 'cue-status';
-      const actionRow = document.getElementById('action-row');
-      actionRow.parentNode.insertBefore(el, actionRow);
+      document.getElementById('panel-scroll').appendChild(el);
     }
     el.textContent = message;
     el.classList.add('show');
@@ -595,32 +890,51 @@
     const list = $('#recovery-list');
     const items = Array.isArray(sessions) ? sessions : [];
     panel.classList.toggle('hidden', items.length === 0);
-    $('#recovery-count').textContent = items.length ? `${items.length} незаверш.` : '';
+    $('#recovery-count').textContent = items.length ? String(items.length) : '';
     list.innerHTML = '';
     for (const session of items) {
       const row = document.createElement('div');
       row.className = 'recovery-item';
+      const info = document.createElement('div');
+      info.className = 'recovery-info';
+      const name = document.createElement('div');
+      name.className = 'recovery-name';
+      name.textContent = 'Встреча без итога';
       const meta = document.createElement('div');
       meta.className = 'recovery-meta';
-      const when = new Date(session.startedAt || session.updatedAt || Date.now()).toLocaleString();
-      meta.textContent = `${when} · ${session.turnCount} реплик · ${session.errorCount || 0} ошибок`;
+      const when = new Date(session.startedAt || session.updatedAt || Date.now()).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const turns = Number(session.turnCount || 0);
+      const errors = Number(session.errorCount || 0);
+      meta.textContent = `${when} · ${turns} ${turns === 1 ? 'реплика' : 'реплик'}${errors ? ` · ${errors} ${errors === 1 ? 'ошибка' : 'ошибки'}` : ''}`;
       const actions = document.createElement('div');
       actions.className = 'recovery-actions';
-      const add = (label, action) => {
+      const add = (label, busyLabel, kind, action, iconName) => {
         const button = document.createElement('button');
-        button.textContent = label;
+        const renderIdle = () => {
+          if (iconName) button.innerHTML = icon(iconName, { size: 14 });
+          else button.textContent = label;
+        };
+        renderIdle();
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        if (iconName) button.classList.add('icon-only');
+        if (kind) button.classList.add(kind);
         button.addEventListener('click', async () => {
           button.disabled = true;
+          if (!iconName) button.textContent = busyLabel;
+          button.classList.add('is-loading');
           try { await action(); renderRecovery(await cue.sessionsList()); }
-          catch (error) { showStatus('Восстановление: ' + mediaErrorDetail(error)); }
-          finally { button.disabled = false; }
+          catch (error) { button.classList.add('is-error'); if (!iconName) button.textContent = 'Ошибка'; showStatus('Не удалось обработать черновик: ' + mediaErrorDetail(error)); }
+          finally { button.disabled = false; button.classList.remove('is-loading'); if (button.isConnected) renderIdle(); }
         });
         actions.appendChild(button);
       };
-      add('Продолжить', async () => { captureWanted = true; void startSystemAudio(); await cue.sessionContinue(session.filePath); });
-      add('Итог', () => cue.sessionSummary(session.filePath));
-      add('RAW', () => cue.sessionOpen(session.filePath));
-      row.append(meta, actions);
+      add('Продолжить', 'Запускаю…', 'primary', async () => { captureWanted = true; void startSystemAudio(); await cue.sessionContinue(session.filePath); });
+      add('Итог', 'Формирую…', '', () => cue.sessionSummary(session.filePath));
+      add('RAW', 'Открываю…', '', () => cue.sessionOpen(session.filePath));
+      add('Убрать', 'Убираю…', 'dismiss', async () => { await cue.sessionDismiss(session.filePath); showStatus('Черновик убран из восстановления. RAW-файл сохранён.'); }, 'x');
+      info.append(name, meta);
+      row.append(info, actions);
       list.appendChild(row);
     }
   }
@@ -630,12 +944,6 @@
   const catalogQuery = $('#catalog-query');
   const catalogResults = $('#catalog-results');
   let catalogTimer = null;
-  async function copyCatalogSection(filePath, kind) {
-    const text = await cue.catalogExtract(filePath, kind);
-    if (!text) { showStatus(kind === 'tasks' ? 'Задачи не найдены.' : 'Решения не найдены.'); return; }
-    await navigator.clipboard.writeText(text);
-    showStatus(kind === 'tasks' ? 'Задачи скопированы.' : 'Решения скопированы.');
-  }
   async function renderCatalog() {
     const items = await cue.catalogSearch(catalogQuery.value.trim());
     catalogResults.innerHTML = '';
@@ -646,18 +954,55 @@
       const meta = document.createElement('div'); meta.className = 'catalog-meta'; meta.textContent = `${new Date(item.date).toLocaleString()}${item.client ? ' · ' + item.client : ''}${item.tags.length ? ' · ' + item.tags.join(', ') : ''}`;
       const snippet = document.createElement('div'); snippet.className = 'catalog-snippet'; snippet.textContent = item.snippet;
       const actions = document.createElement('div'); actions.className = 'catalog-actions';
-      const add = (label, fn) => { const button = document.createElement('button'); button.textContent = label; button.addEventListener('click', async () => { button.disabled = true; try { await fn(); } catch (error) { showStatus('Каталог: ' + mediaErrorDetail(error)); } finally { button.disabled = false; } }); actions.appendChild(button); };
-      add('Открыть', () => cue.catalogOpen(item.filePath));
-      add('DOCX', () => cue.catalogExport(item.filePath, 'docx'));
-      add('PDF', () => cue.catalogExport(item.filePath, 'pdf'));
-      add('Копировать задачи', () => copyCatalogSection(item.filePath, 'tasks'));
-      add('Копировать решения', () => copyCatalogSection(item.filePath, 'decisions'));
+      const add = (label, busyLabel, doneLabel, kind, fn) => {
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.className = `catalog-action ${kind}`;
+        button.addEventListener('click', async () => {
+          if (button.disabled) return;
+          button.disabled = true;
+          button.setAttribute('aria-busy', 'true');
+          button.classList.add('is-loading');
+          button.textContent = busyLabel;
+          row.classList.add('is-busy');
+          try {
+            await fn();
+            button.classList.remove('is-loading');
+            button.classList.add('is-success');
+            button.textContent = doneLabel;
+            row.classList.add('is-success');
+            setTimeout(() => { button.classList.remove('is-success'); button.textContent = label; row.classList.remove('is-success'); }, 1400);
+          } catch (error) {
+            button.classList.remove('is-loading');
+            button.classList.add('is-error');
+            button.textContent = 'Ошибка';
+            row.classList.add('is-error');
+            showStatus('Каталог: ' + mediaErrorDetail(error));
+            setTimeout(() => { button.classList.remove('is-error'); button.textContent = label; row.classList.remove('is-error'); }, 2200);
+          } finally {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            row.classList.remove('is-busy');
+          }
+        });
+        actions.appendChild(button);
+      };
+      add('Открыть', 'Открываю…', 'Открыто', 'primary', () => cue.catalogOpen(item.filePath));
+      add('DOCX', 'DOCX…', 'Готово', 'format', () => cue.catalogExport(item.filePath, 'docx'));
+      add('PDF', 'PDF…', 'Готово', 'format', () => cue.catalogExport(item.filePath, 'pdf'));
       row.append(title, meta, snippet, actions); catalogResults.appendChild(row);
     }
   }
-  $('#search-btn').addEventListener('click', async () => { catalogScrim.classList.remove('hidden'); await renderCatalog(); catalogQuery.focus(); });
-  $('#catalog-close').addEventListener('click', () => catalogScrim.classList.add('hidden'));
-  catalogScrim.addEventListener('click', (event) => { if (event.target === catalogScrim) catalogScrim.classList.add('hidden'); });
+  $('#search-btn').addEventListener('click', async () => {
+    const opening = catalogScrim.classList.contains('hidden');
+    catalogScrim.classList.toggle('hidden', !opening);
+    $('#search-btn').classList.toggle('on', opening);
+    if (opening) { await renderCatalog(); catalogQuery.focus(); }
+  });
+  $('#catalog-close').addEventListener('click', () => {
+    catalogScrim.classList.add('hidden');
+    $('#search-btn').classList.remove('on');
+  });
   catalogQuery.addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => void renderCatalog(), 180); });
 
   // ---- settings ----------------------------------------------------------
@@ -679,21 +1024,41 @@
   const sttTrustDraft = {};
   let settingsSaving = false;
 
+  function showSettingsTab(name) {
+    const tab = name === 'interface' ? 'interface' : 'provider';
+    document.querySelectorAll('[data-settings-tab]').forEach((button) => {
+      const active = button.dataset.settingsTab === tab;
+      button.classList.toggle('on', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    $('#settings-provider-pane').classList.toggle('hidden', tab !== 'provider');
+    $('#settings-interface-pane').classList.toggle('hidden', tab !== 'interface');
+  }
+  document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsTab(button.dataset.settingsTab)));
+
   function openSettings() {
     if (!settings) return;
+    closeOnboard();
     fillSettings();
+    showSettingsTab('provider');
     scrim.classList.remove('hidden');
+    $('#more-btn').classList.add('on');
   }
   async function closeSettings() {
     if (settingsSaving) return;
     settingsSaving = true;
     const saved = await saveSettings();
     settingsSaving = false;
-    if (saved) scrim.classList.add('hidden');
+    if (saved) {
+      scrim.classList.add('hidden');
+      $('#more-btn').classList.remove('on');
+    }
   }
-  $('#more-btn').addEventListener('click', openSettings);
+  $('#more-btn').addEventListener('click', () => {
+    if (scrim.classList.contains('hidden')) openSettings();
+    else void closeSettings();
+  });
   $('#s-close').addEventListener('click', closeSettings);
-  scrim.addEventListener('click', (e) => { if (e.target === scrim) closeSettings(); });
   cue.on('settings:open', openSettings);
 
   function ensureSettingsShape() {
@@ -716,8 +1081,30 @@
     settings.appearance.language = settings.appearance.language === 'en' ? 'en' : 'ru';
     settings.appearance.windowDrag = settings.appearance.windowDrag !== false;
     settings.appearance.backgroundColor = /^#[0-9a-f]{6}$/i.test(settings.appearance.backgroundColor || '') ? settings.appearance.backgroundColor.toLowerCase() : '#14161c';
+    settings.appearance.accentColor = /^#[0-9a-f]{6}$/i.test(settings.appearance.accentColor || '') ? settings.appearance.accentColor.toLowerCase() : '#3c83f5';
     const appearanceOpacity = Number(settings.appearance.backgroundOpacity);
-    settings.appearance.backgroundOpacity = Number.isFinite(appearanceOpacity) ? Math.min(0.95, Math.max(0.2, appearanceOpacity)) : 0.72;
+    settings.appearance.backgroundOpacity = Number.isFinite(appearanceOpacity) ? Math.min(0.98, Math.max(0.2, appearanceOpacity)) : 0.72;
+    const appearanceTextScale = Number(settings.appearance.textScale);
+    settings.appearance.textScale = Number.isFinite(appearanceTextScale) ? Math.min(1.5, Math.max(0.75, appearanceTextScale)) : 1;
+    const appearancePanelWidth = Number(settings.appearance.panelWidth);
+    settings.appearance.panelWidth = Number.isFinite(appearancePanelWidth) ? Math.min(760, Math.max(520, appearancePanelWidth)) : 624;
+    const appearanceSidecarWidth = Number(settings.appearance.sidecarWidth);
+    settings.appearance.sidecarWidth = Number.isFinite(appearanceSidecarWidth) ? Math.min(520, Math.max(300, appearanceSidecarWidth)) : 440;
+    const clampAppearance = (key, fallback, min, max) => {
+      const value = Number(settings.appearance[key]);
+      settings.appearance[key] = Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+    };
+    clampAppearance('catalogWidth', settings.appearance.sidecarWidth, 300, 520);
+    clampAppearance('settingsWidth', settings.appearance.sidecarWidth, 300, 520);
+    clampAppearance('panelHeight', 540, 280, 900);
+    clampAppearance('catalogHeight', 690, 320, 1100);
+    clampAppearance('settingsHeight', 690, 320, 1100);
+    clampAppearance('panelOffsetY', 0, -8, 220);
+    clampAppearance('catalogTop', 14, 4, 260);
+    clampAppearance('settingsTop', 14, 4, 260);
+    settings.appearance.blurStrength = Number.isFinite(Number(settings.appearance.blurStrength)) ? Math.min(60, Math.max(0, Number(settings.appearance.blurStrength))) : 40;
+    settings.appearance.cornerRadius = Number.isFinite(Number(settings.appearance.cornerRadius)) ? Math.min(32, Math.max(10, Number(settings.appearance.cornerRadius))) : 24;
+    settings.appearance.animations = settings.appearance.animations !== false;
     for (const provider of sttProviderNames) {
       if (settings.sttApiKeys[provider] === undefined) settings.sttApiKeys[provider] = '';
       if (!settings.stt.routes[provider]) {
@@ -738,17 +1125,20 @@
       const route = settings.stt.routes[provider];
       sttTrustDraft[provider] = trustedValue(route.baseUrl, route.trustedBaseUrl, provider);
     }
-    document.querySelectorAll('#provider-seg button').forEach((b) => b.classList.toggle('on', b.dataset.provider === settings.provider));
-    $('#key-openai').value = settings.apiKeys.openai || '';
-    $('#key-anthropic').value = settings.apiKeys.anthropic || '';
-    $('#key-gemini').value = settings.apiKeys.gemini || '';
-    $('#key-nvidia').value = settings.apiKeys.nvidia || '';
-    $('#key-compatible').value = settings.apiKeys.compatible || '';
+    $('#provider-select').value = settings.provider;
     $('#appearance-language').value = settings.appearance.language;
     $('#appearance-drag').checked = settings.appearance.windowDrag;
     $('#appearance-color').value = settings.appearance.backgroundColor;
+    $('#appearance-accent').value = settings.appearance.accentColor;
     $('#appearance-opacity').value = String(Math.round(settings.appearance.backgroundOpacity * 100));
     $('#appearance-opacity-value').textContent = Math.round(settings.appearance.backgroundOpacity * 100) + '%';
+    $('#appearance-text-scale').value = String(Math.round(settings.appearance.textScale * 16));
+    $('#appearance-text-scale-value').textContent = Math.round(settings.appearance.textScale * 16) + ' px';
+    $('#appearance-blur').value = String(settings.appearance.blurStrength);
+    $('#appearance-blur-value').textContent = String(settings.appearance.blurStrength);
+    $('#appearance-radius').value = String(settings.appearance.cornerRadius);
+    $('#appearance-radius-value').textContent = String(settings.appearance.cornerRadius);
+    $('#appearance-animations').checked = settings.appearance.animations;
     applyLanguage();
     applyAppearance();
     fillProviderFields(settings.provider);
@@ -761,6 +1151,8 @@
     $('#model-smart').value = m.smart;
     $('#base-url').value = settings.baseUrls[provider] || '';
     $('#base-url').placeholder = endpointPlaceholders[provider] || 'https://api.example.com/v1';
+    $('#provider-api-key').value = settings.apiKeys[provider] || '';
+    $('#provider-api-key').placeholder = provider === 'anthropic' ? 'sk-ant-...' : provider === 'gemini' ? 'AIza...' : provider === 'nvidia' ? 'nvapi-...' : provider === 'compatible' ? 'optional with no auth' : 'sk-...';
     $('#endpoint-trust').checked = endpointTrustDraft[provider] === normalizedOrEmpty(settings.baseUrls[provider], provider);
     $('#auth-mode-row').classList.toggle('hidden', provider !== 'compatible');
     $('#send-auth').checked = settings.authModes.compatible !== 'none';
@@ -792,6 +1184,7 @@
     settings.models[provider].fast = $('#model-fast').value.trim();
     settings.models[provider].smart = $('#model-smart').value.trim();
     settings.baseUrls[provider] = $('#base-url').value.trim();
+    settings.apiKeys[provider] = $('#provider-api-key').value.trim();
     endpointTrustDraft[provider] = $('#endpoint-trust').checked ? normalizedOrEmpty(settings.baseUrls[provider], provider) : '';
     if (provider === 'compatible') settings.authModes.compatible = $('#send-auth').checked ? 'bearer' : 'none';
     if (sttProviderNames.includes(provider)) {
@@ -963,7 +1356,28 @@
   });
   $('#appearance-drag').addEventListener('change', () => { captureAppearanceFields(); applyAppearance(); });
   $('#appearance-color').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
+  $('#appearance-accent').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
   $('#appearance-opacity').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
+  $('#appearance-blur').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
+  $('#appearance-radius').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
+  $('#appearance-text-scale').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
+  $('#appearance-animations').addEventListener('change', () => { captureAppearanceFields(); applyAppearance(); });
+  const appearancePresets = {
+    graphite: { backgroundColor: '#14161c', accentColor: '#3c83f5', backgroundOpacity: 0.72, blurStrength: 40, cornerRadius: 24 },
+    midnight: { backgroundColor: '#101827', accentColor: '#7c8cff', backgroundOpacity: 0.82, blurStrength: 46, cornerRadius: 22 },
+    obsidian: { backgroundColor: '#08090c', accentColor: '#d5a85b', backgroundOpacity: 0.9, blurStrength: 28, cornerRadius: 18 },
+    arctic: { backgroundColor: '#18202b', accentColor: '#7dd3fc', backgroundOpacity: 0.8, blurStrength: 44, cornerRadius: 24 },
+    forest: { backgroundColor: '#101b18', accentColor: '#34d399', backgroundOpacity: 0.84, blurStrength: 38, cornerRadius: 22 },
+    wine: { backgroundColor: '#21131a', accentColor: '#fb7185', backgroundOpacity: 0.84, blurStrength: 42, cornerRadius: 24 }
+  };
+  document.querySelectorAll('#appearance-presets [data-preset]').forEach((button) => button.addEventListener('click', () => {
+    settings.appearance = { ...settings.appearance, ...appearancePresets[button.dataset.preset] };
+    applyAppearance();
+  }));
+  $('#appearance-reset').addEventListener('click', () => {
+    settings.appearance = { ...settings.appearance, backgroundColor: '#14161c', accentColor: '#3c83f5', backgroundOpacity: 0.72, blurStrength: 40, cornerRadius: 24, animations: true, textScale: 1 };
+    applyAppearance();
+  });
 
   function legacyStatusText() {
     const k = settings.apiKeys;
@@ -981,13 +1395,12 @@
     const endpoint = settings.baseUrls[settings.provider] ? t('customApi') : (settings.provider === 'compatible' ? t('apiNotSet') : t('officialApi'));
     return t('active') + ': ' + settings.provider + ' · ' + endpoint + ' · ' + t('keys') + ': ' + (has.join(', ') || 'none set') + ' · ' + t('stt') + ': ' + stt;
   }
-  document.querySelectorAll('#provider-seg button').forEach((b) => b.addEventListener('click', () => {
+  $('#provider-select').addEventListener('change', (event) => {
     captureProviderFields(settings.provider);
-    settings.provider = b.dataset.provider;
-    document.querySelectorAll('#provider-seg button').forEach((x) => x.classList.toggle('on', x === b));
+    settings.provider = event.target.value;
     fillProviderFields(settings.provider);
     $('#s-status').textContent = statusText();
-  }));
+  });
 
   function settingsValidationError(message, provider, field) {
     const error = new Error(message);
@@ -998,11 +1411,6 @@
 
   async function saveSettings() {
     captureAppearanceFields();
-    settings.apiKeys.openai = $('#key-openai').value.trim();
-    settings.apiKeys.anthropic = $('#key-anthropic').value.trim();
-    settings.apiKeys.gemini = $('#key-gemini').value.trim();
-    settings.apiKeys.nvidia = $('#key-nvidia').value.trim();
-    settings.apiKeys.compatible = $('#key-compatible').value.trim();
     captureProviderFields(settings.provider);
     try {
       for (const provider of providerNames) {
@@ -1050,7 +1458,7 @@
       const message = String(error && error.message ? error.message : error).replace(/^Error invoking remote method '[^']+': Error:\s*/, '');
       if (error.provider && error.provider !== settings.provider) {
         settings.provider = error.provider;
-        document.querySelectorAll('#provider-seg button').forEach((b) => b.classList.toggle('on', b.dataset.provider === settings.provider));
+        $('#provider-select').value = settings.provider;
         fillProviderFields(settings.provider);
       }
       if (error.field === 'stt') {
@@ -1066,17 +1474,6 @@
     }
   }
 
-  // ---- example conversation (matches the reference screenshot) ------------
-  function showExample() {
-    clearMessages();
-    addUserBubble(t('say'));
-    const ai = document.createElement('div');
-    ai.className = 'ai-text';
-    ai.textContent = '“A discounted cash flow model values a company by projecting future free cash flows and discounting them to present value using the weighted average cost of capital.”';
-    ai.textContent = t('example');
-    messages.appendChild(ai);
-  }
-
   // ---- global keys -------------------------------------------------------
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !scrim.classList.contains('hidden')) closeSettings();
@@ -1085,21 +1482,70 @@
     }
   });
 
-  // UI Zoom buttons (text only)
-  let currentZoom = 1;
-  function updateZoom(delta) {
-    currentZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
-    document.documentElement.style.setProperty('--text-zoom', currentZoom);
+  function bindPanelResizer(handle) {
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startPanel = Number(settings.appearance.panelWidth) || 624;
+      const panelEdge = handle.dataset.resizePanel;
+      const sidecar = handle.dataset.resizeSidecar;
+      const heightTarget = handle.dataset.resizeHeight;
+      const edge = handle.dataset.resizeEdge || panelEdge;
+      const widthKey = sidecar ? `${sidecar}Width` : null;
+      const heightKey = heightTarget ? `${heightTarget}Height` : null;
+      const topKey = heightTarget === 'panel' ? 'panelOffsetY' : (heightTarget ? `${heightTarget}Top` : null);
+      const startWidth = widthKey ? Number(settings.appearance[widthKey]) || 440 : 0;
+      const startHeight = heightKey ? Number(settings.appearance[heightKey]) || (heightTarget === 'panel' ? 540 : 690) : 0;
+      const startTop = topKey ? Number(settings.appearance[topKey]) || 0 : 0;
+      handle.classList.add('dragging');
+      document.body.classList.add('resizing-panels');
+      document.body.dataset.resizeAxis = heightTarget ? 'y' : 'x';
+      handle.setPointerCapture(event.pointerId);
+      const move = (moveEvent) => {
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        if (panelEdge) {
+          const direction = panelEdge === 'right' ? 1 : -1;
+          settings.appearance.panelWidth = Math.min(760, Math.max(520, Math.round((startPanel + direction * dx * 2) / 4) * 4));
+        } else if (sidecar) {
+          const direction = edge === 'right' ? 1 : -1;
+          settings.appearance[widthKey] = Math.min(520, Math.max(300, Math.round((startWidth + direction * dx) / 4) * 4));
+        } else if (heightTarget) {
+          const minHeight = heightTarget === 'panel' ? 280 : 320;
+          const available = Math.max(minHeight, window.innerHeight - (edge === 'top' ? Math.max(4, startTop + dy) : startTop) - 8);
+          settings.appearance[heightKey] = Math.min(available, Math.max(minHeight, Math.round((startHeight + (edge === 'top' ? -dy : dy)) / 4) * 4));
+          if (edge === 'top') settings.appearance[topKey] = Math.max(heightTarget === 'panel' ? -8 : 4, Math.min(260, Math.round(startTop + dy)));
+        }
+        applyAppearance();
+      };
+      const finish = async () => {
+        handle.classList.remove('dragging');
+        document.body.classList.remove('resizing-panels');
+        delete document.body.dataset.resizeAxis;
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', finish);
+        handle.removeEventListener('pointercancel', finish);
+        const layout = { panelWidth: settings.appearance.panelWidth };
+        if (widthKey) layout[widthKey] = settings.appearance[widthKey];
+        if (heightKey) layout[heightKey] = settings.appearance[heightKey];
+        if (topKey) layout[topKey] = settings.appearance[topKey];
+        settings = await cue.settingsSet({ appearance: layout });
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', finish);
+      handle.addEventListener('pointercancel', finish);
+    });
   }
-  $('#zoom-in-btn').addEventListener('click', () => updateZoom(0.1));
-  $('#zoom-out-btn').addEventListener('click', () => updateZoom(-0.1));
+  document.querySelectorAll('.panel-resizer').forEach(bindPanelResizer);
 
   // ---- click-through: only the UI blocks the mouse; empty gaps pass to your screen ----
   let ignoring = null;
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #settings-scrim, #onboard-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #settings, #catalog, #onboard, .panel-resizer'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it
@@ -1162,15 +1608,33 @@
     $('#ob-next').textContent = obIndex === OB_STEPS.length - 1 ? 'Done' : 'Next';
     $('#ob-skip').style.visibility = obIndex === OB_STEPS.length - 1 ? 'hidden' : 'visible';
   }
-  function showOnboard() { obIndex = 0; renderOnboard(); obScrim.classList.remove('hidden'); setIgnore(false); }
-  async function finishOnboard() {
+  function showOnboard() {
+    obIndex = 0;
+    renderOnboard();
+    obScrim.classList.remove('hidden');
+    $('#logo-btn').classList.add('on');
+    setIgnore(false);
+  }
+  function closeOnboard() {
     obScrim.classList.add('hidden');
+    $('#logo-btn').classList.remove('on');
+  }
+  async function toggleOnboard() {
+    if (!obScrim.classList.contains('hidden')) { closeOnboard(); return; }
+    if (!scrim.classList.contains('hidden')) {
+      await closeSettings();
+      if (!scrim.classList.contains('hidden')) return;
+    }
+    showOnboard();
+  }
+  async function finishOnboard() {
+    closeOnboard();
     if (settings && !settings.onboarded) { settings.onboarded = true; await cue.settingsSet({ onboarded: true }); }
   }
   $('#ob-next').addEventListener('click', () => { if (obIndex === OB_STEPS.length - 1) finishOnboard(); else { obIndex++; renderOnboard(); } });
   $('#ob-back').addEventListener('click', () => { if (obIndex > 0) { obIndex--; renderOnboard(); } });
   $('#ob-skip').addEventListener('click', finishOnboard);
-  $('#logo-btn').addEventListener('click', showOnboard);
+  $('#logo-btn').addEventListener('click', () => void toggleOnboard());
 
   // ---- boot --------------------------------------------------------------
   (async function boot() {
@@ -1183,7 +1647,7 @@
     smartBtn.classList.toggle('on', !!settings.smart);
     clearLiveTranscript();
     assistStateEl.textContent = t('ready');
-    showExample();
+    clearMessages();
     syncPlaceholder();
     const st = await cue.captureState();
     captureWanted = !!st.active;

@@ -137,12 +137,29 @@ class SessionJournal {
     return sessions;
   }
 
-  async load(filePath) {
+  async dismiss(filePath) {
+    const resolved = this.resolveSessionPath(filePath);
+    const data = JSON.parse(await fs.readFile(resolved, 'utf8'));
+    if (!Array.isArray(data.transcript)) throw new Error('Session transcript is invalid.');
+    data.status = 'dismissed';
+    data.dismissedAt = new Date().toISOString();
+    data.updatedAt = data.dismissedAt;
+    await fs.writeFile(resolved, JSON.stringify(data, null, 2) + '\n', 'utf8');
+    if (this.filePath === resolved) this.data = data;
+    return { filePath: resolved, status: data.status };
+  }
+
+  resolveSessionPath(filePath) {
     const resolved = path.resolve(filePath);
     const relative = path.relative(this.sessionsDirectory, resolved);
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || !resolved.endsWith('.json')) {
       throw new Error('Session path is outside the Cue sessions directory.');
     }
+    return resolved;
+  }
+
+  async load(filePath) {
+    const resolved = this.resolveSessionPath(filePath);
     const data = JSON.parse(await fs.readFile(resolved, 'utf8'));
     if (!Array.isArray(data.transcript)) throw new Error('Session transcript is invalid.');
     this.attach(resolved, data);

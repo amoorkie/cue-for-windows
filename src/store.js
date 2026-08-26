@@ -18,7 +18,22 @@ const DEFAULTS = {
     language: 'ru',
     windowDrag: true,
     backgroundColor: '#14161c',
-    backgroundOpacity: 0.72
+    accentColor: '#3c83f5',
+    backgroundOpacity: 0.72,
+    blurStrength: 40,
+    cornerRadius: 24,
+    animations: true,
+    textScale: 1,
+    panelWidth: 624,
+    sidecarWidth: 440,
+    catalogWidth: 440,
+    settingsWidth: 440,
+    panelHeight: 540,
+    catalogHeight: 690,
+    settingsHeight: 690,
+    panelOffsetY: 0,
+    catalogTop: 14,
+    settingsTop: 14,
   },
   sttApiKeys: { openai: '', gemini: '', compatible: '' },
   models: {
@@ -44,12 +59,43 @@ function normalizeAppearance(input) {
   const color = typeof value.backgroundColor === 'string' && /^#[0-9a-f]{6}$/i.test(value.backgroundColor.trim())
     ? value.backgroundColor.trim().toLowerCase() : DEFAULTS.appearance.backgroundColor;
   const rawOpacity = Number(value.backgroundOpacity);
-  const opacity = Number.isFinite(rawOpacity) ? Math.min(0.95, Math.max(0.2, rawOpacity)) : DEFAULTS.appearance.backgroundOpacity;
+  const opacity = Number.isFinite(rawOpacity) ? Math.min(0.98, Math.max(0.2, rawOpacity)) : DEFAULTS.appearance.backgroundOpacity;
+  const accentColor = typeof value.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(value.accentColor.trim())
+    ? value.accentColor.trim().toLowerCase() : DEFAULTS.appearance.accentColor;
+  const rawBlur = Number(value.blurStrength);
+  const blurStrength = Number.isFinite(rawBlur) ? Math.min(60, Math.max(0, rawBlur)) : DEFAULTS.appearance.blurStrength;
+  const rawRadius = Number(value.cornerRadius);
+  const cornerRadius = Number.isFinite(rawRadius) ? Math.min(32, Math.max(10, rawRadius)) : DEFAULTS.appearance.cornerRadius;
+  const rawTextScale = Number(value.textScale);
+  const textScale = Number.isFinite(rawTextScale) ? Math.min(1.5, Math.max(0.75, rawTextScale)) : DEFAULTS.appearance.textScale;
+  const rawPanelWidth = Number(value.panelWidth);
+  const panelWidth = Number.isFinite(rawPanelWidth) ? Math.min(760, Math.max(520, rawPanelWidth)) : DEFAULTS.appearance.panelWidth;
+  const rawSidecarWidth = Number(value.sidecarWidth);
+  const sidecarWidth = Number.isFinite(rawSidecarWidth) ? Math.min(520, Math.max(300, rawSidecarWidth)) : DEFAULTS.appearance.sidecarWidth;
+  const dimension = (key, fallback, min, max) => {
+    const raw = Number(value[key]);
+    return Math.round(Number.isFinite(raw) ? Math.min(max, Math.max(min, raw)) : fallback);
+  };
   return {
     language: value.language === 'en' ? 'en' : 'ru',
     windowDrag: value.windowDrag !== false,
     backgroundColor: color,
-    backgroundOpacity: Number(opacity.toFixed(2))
+    accentColor,
+    backgroundOpacity: Number(opacity.toFixed(2)),
+    blurStrength: Math.round(blurStrength),
+    cornerRadius: Math.round(cornerRadius),
+    animations: value.animations !== false,
+    textScale: Number(textScale.toFixed(2)),
+    panelWidth: Math.round(panelWidth),
+    sidecarWidth: Math.round(sidecarWidth),
+    catalogWidth: dimension('catalogWidth', sidecarWidth, 300, 520),
+    settingsWidth: dimension('settingsWidth', sidecarWidth, 300, 520),
+    panelHeight: dimension('panelHeight', DEFAULTS.appearance.panelHeight, 280, 900),
+    catalogHeight: dimension('catalogHeight', DEFAULTS.appearance.catalogHeight, 320, 1100),
+    settingsHeight: dimension('settingsHeight', DEFAULTS.appearance.settingsHeight, 320, 1100),
+    panelOffsetY: dimension('panelOffsetY', DEFAULTS.appearance.panelOffsetY, -8, 220),
+    catalogTop: dimension('catalogTop', DEFAULTS.appearance.catalogTop, 4, 260),
+    settingsTop: dimension('settingsTop', DEFAULTS.appearance.settingsTop, 4, 260)
   };
 }
 

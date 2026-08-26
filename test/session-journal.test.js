@@ -48,3 +48,18 @@ test('lists and securely loads incomplete sessions', async (t) => {
   assert.equal((await journal.load(filePath)).data.transcript[0].text, 'Клиент');
   await assert.rejects(journal.load(path.join(root, 'outside.json')), /outside/);
 });
+
+test('dismisses a recovery card without deleting its raw journal', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cue-session-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const journal = new SessionJournal(root);
+  const filePath = await journal.start();
+  await journal.appendTurn({ channel: 'them', text: 'Сохранённый RAW', ts: 9 });
+
+  await journal.dismiss(filePath);
+
+  assert.equal((await journal.listIncomplete()).length, 0);
+  const saved = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  assert.equal(saved.status, 'dismissed');
+  assert.equal(saved.transcript[0].text, 'Сохранённый RAW');
+});
