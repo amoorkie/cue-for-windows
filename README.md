@@ -8,7 +8,7 @@
 
 ### [⬇ Скачать Cue для Windows](../../releases/latest) · [⬇ Скачать Cue для macOS](../../releases/latest)
 
-[Все релизы](../../releases) · Текущая версия: **0.1.6** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
+[Все релизы](../../releases) · Текущая версия: **0.1.7** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
 
 <img src="docs/tutorial.png" width="620" alt="cue first-run tutorial" />
 
@@ -68,8 +68,8 @@ There are two ways to install cue on macOS. **If you're not a developer, use Opt
 
 ### Option A — Download the app (easiest)
 
-1. Go to the [**Releases**](../../releases) page and download the matching DMG: **`cue-<version>-mac-arm64.dmg`** for Apple Silicon (M-series) or **`cue-<version>-mac-x64.dmg`** for Intel Macs.
-2. Open the DMG and drag **`cue.app`** into your **Applications** folder.
+1. Go to the [**Releases**](../../releases) page and download the matching ZIP: **`cue-<version>-mac-arm64.zip`** for Apple Silicon (M-series) or **`cue-<version>-mac-x64.zip`** for Intel Macs.
+2. Open the ZIP and drag **`cue.app`** into your **Applications** folder.
 3. **First open (important):** because cue is a free app without a paid Apple certificate, macOS will refuse to open it normally the first time. Do this once:
    - **Right-click** `cue.app` → **Open** → click **Open** in the dialog.
    - If macOS instead says **"cue is damaged and can't be opened,"** open the **Terminal** app and paste this line, then press Return:
@@ -78,7 +78,7 @@ There are two ways to install cue on macOS. **If you're not a developer, use Opt
      ```
      Then double-click cue.app again. (This just tells macOS "yes, I trust this app I downloaded." It's safe.)
 
-The release also includes a ZIP with the same universal app for manual installation or update tooling. After the first approval, cue opens normally.
+After the first approval, cue opens normally.
 
 ### Option B — Run from source (developers)
 
@@ -93,7 +93,7 @@ npm start
 
 To build your own `cue.app`:
 ```bash
-npm run dist:mac  # creates Intel and Apple Silicon DMG/ZIP files in dist/
+npm run dist:mac  # creates Intel and Apple Silicon ZIP files in dist/
 ```
 > Note: the packaged app is **ad-hoc signed** (no paid Apple certificate). macOS ties permission grants to the exact build, so **rebuilding resets the mic/screen permissions** — you'll grant them again. For everyday use, build once and keep it.
 
