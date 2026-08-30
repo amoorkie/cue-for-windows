@@ -28,7 +28,7 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Build universal macOS installer
+      - name: Build macOS installers for Intel and Apple Silicon
         run: npm run dist:mac
 
       - name: Publish macOS release assets
@@ -41,7 +41,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cue-macos-universal
+          name: cue-macos-installers
           path: |
             dist/*.dmg
             dist/*.zip
