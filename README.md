@@ -8,7 +8,7 @@
 
 ### [⬇ Скачать Cue для Windows](../../releases/latest) · [⬇ Скачать Cue для macOS](../../releases/latest)
 
-[Все релизы](../../releases) · Текущая версия: **0.1.7** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
+[Все релизы](../../releases) · Текущая версия: **0.1.8** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
 
 <img src="docs/tutorial.png" width="620" alt="cue first-run tutorial" />
 
