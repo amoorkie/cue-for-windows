@@ -1,14 +1,14 @@
 <div align="center">
 
-# cue for Windows
+# cue
 
-**Открытый AI-помощник для Windows: видит ваш экран, слышит разговоры и помогает во время созвонов.**
+**Открытый AI-помощник для Windows и macOS: видит ваш экран, слышит разговоры и помогает во время созвонов.**
 
 Бесплатная self-hosted альтернатива Cluely. Работает с вашим API-ключом OpenAI, Anthropic, Google Gemini, NVIDIA или совместимого сервиса.
 
-### [⬇ Скачать установщик Cue для Windows x64](https://github.com/amoorkie/cue-for-windows/releases/download/v0.1.0/cue-0.1.0-windows-x64.exe)
+### [⬇ Скачать Cue для Windows](../../releases/latest) · [⬇ Скачать Cue для macOS](../../releases/latest)
 
-[Все релизы](https://github.com/amoorkie/cue-for-windows/releases) · Текущая версия: **0.1.0** · Windows 10 (2004+) / Windows 11
+[Все релизы](../../releases) · Текущая версия: **0.1.5** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
 
 <img src="docs/tutorial.png" width="620" alt="cue first-run tutorial" />
 
@@ -68,10 +68,9 @@ There are two ways to install cue on macOS. **If you're not a developer, use Opt
 
 ### Option A — Download the app (easiest)
 
-1. Go to the [**Releases**](../../releases) page and download **`cue-mac.zip`**.
-2. Double-click the zip to unzip it. You'll get **`cue.app`**.
-3. Drag **`cue.app`** into your **Applications** folder.
-4. **First open (important):** because cue is a free app without a paid Apple certificate, macOS will refuse to open it normally the first time. Do this once:
+1. Go to the [**Releases**](../../releases) page and download **`cue-<version>-mac-universal.dmg`** (works on both Intel and Apple Silicon Macs).
+2. Open the DMG and drag **`cue.app`** into your **Applications** folder.
+3. **First open (important):** because cue is a free app without a paid Apple certificate, macOS will refuse to open it normally the first time. Do this once:
    - **Right-click** `cue.app` → **Open** → click **Open** in the dialog.
    - If macOS instead says **"cue is damaged and can't be opened,"** open the **Terminal** app and paste this line, then press Return:
      ```bash
@@ -79,7 +78,7 @@ There are two ways to install cue on macOS. **If you're not a developer, use Opt
      ```
      Then double-click cue.app again. (This just tells macOS "yes, I trust this app I downloaded." It's safe.)
 
-After that, cue opens normally forever.
+The release also includes a ZIP with the same universal app for manual installation or update tooling. After the first approval, cue opens normally.
 
 ### Option B — Run from source (developers)
 
@@ -94,7 +93,7 @@ npm start
 
 To build your own `cue.app`:
 ```bash
-npm run pack      # creates dist/mac-arm64/cue.app
+npm run dist:mac  # creates universal DMG and ZIP in dist/
 ```
 > Note: the packaged app is **ad-hoc signed** (no paid Apple certificate). macOS ties permission grants to the exact build, so **rebuilding resets the mic/screen permissions** — you'll grant them again. For everyday use, build once and keep it.
 
