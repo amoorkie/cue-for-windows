@@ -3,10 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { OFFICIAL_BASE_URLS, PROVIDERS, STT_PROVIDERS, normalizeBaseURL } = require('./endpoints');
+const { normalizeLayout } = require('./window-layout');
 
 const FILE = path.join(app.getPath('userData'), 'cue-data.json');
 
 const DEFAULTS = {
+  windowLayout: { version: 2, windows: {} },
+  captureDisplayId: null,
   provider: 'openai',
   smart: false,
   apiKeys: { openai: '', anthropic: '', gemini: '', deepgram: '', nvidia: '', compatible: '' },
@@ -199,6 +202,8 @@ function load() {
   }
   data.authModes.compatible = data.authModes.compatible === 'none' ? 'none' : 'bearer';
   data.appearance = normalizeAppearance(data.appearance);
+  data.windowLayout = normalizeLayout(data.windowLayout);
+  data.captureDisplayId = data.captureDisplayId == null ? null : String(data.captureDisplayId);
   
   // Auto-switch provider if the current one is not configured, but another one is.
   const hasUsableConfig = (provider) => {
@@ -230,7 +235,7 @@ function load() {
   
   return data;
 }
-function save(nextData) { fs.writeFileSync(FILE, JSON.stringify(nextData, null, 2)); }
+function save(nextData) { fs.mkdirSync(path.dirname(FILE), { recursive: true }); fs.writeFileSync(FILE, JSON.stringify(nextData, null, 2)); }
 
 function normalizeLocalStt(value = {}) {
   value = value && typeof value === 'object' ? value : {};
@@ -242,6 +247,8 @@ module.exports = {
   setSettings(patch) {
     load();
     const next = { ...(patch || {}) };
+    if (Object.prototype.hasOwnProperty.call(next, 'windowLayout')) next.windowLayout = normalizeLayout(next.windowLayout);
+    if (Object.prototype.hasOwnProperty.call(next, 'captureDisplayId')) next.captureDisplayId = next.captureDisplayId == null ? null : String(next.captureDisplayId);
     const hasBaseUrlPatch = patch && Object.prototype.hasOwnProperty.call(patch, 'baseUrls');
     const hasTrustedUrlPatch = patch && Object.prototype.hasOwnProperty.call(patch, 'trustedBaseUrls');
     if (hasBaseUrlPatch || hasTrustedUrlPatch) {
@@ -277,6 +284,7 @@ module.exports = {
     // Appearance is already a complete normalized snapshot; deep-merging it
     // would resurrect cleared panel positions after a layout reset.
     updated.appearance = next.appearance || normalizeAppearance(updated.appearance);
+    updated.windowLayout = next.windowLayout || data.windowLayout;
     save(updated);
     data = updated;
     return data;

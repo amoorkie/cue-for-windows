@@ -5,6 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
   <title>cue</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="workspace.css" />
 </head>
 <body>
   <div id="app">
@@ -34,6 +35,20 @@
               <button id="logo-btn" class="more-btn" title="Онбординг" aria-label="Открыть онбординг"></button>
               <button id="search-btn" class="more-btn" title="Поиск по встречам" aria-label="Поиск по встречам"></button>
             </div>
+            <div class="panel-center-tools">
+              <label class="screen-control"><span id="screen-label">Экран для ИИ</span><select id="screen-select" aria-labelledby="screen-label"></select></label>
+            </div>
+            <div id="panel-tools" class="panel-tools">
+              <button id="copy-btn" class="more-btn" title="Копировать сообщения" aria-label="Копировать сообщения"></button>
+              <button id="more-btn" class="more-btn" title="Settings" aria-label="Settings"></button>
+            </div>
+          </div>
+          <div id="transcript-box" class="hidden">
+            <div class="transcript-header">
+              <button id="transcript-toggle" aria-expanded="true" aria-controls="live-transcript"><span class="transcript-chevron" aria-hidden="true">⌄</span><span id="transcript-title">Расшифровка</span><span id="transcript-state-label"></span></button>
+              <button id="transcript-unread" class="hidden"></button>
+              <button id="transcript-expand" aria-label="Развернуть расшифровку до поля ввода" aria-pressed="false"></button>
+            </div>
             <div id="capture-diagnostics" aria-label="Диагностика записи">
               <span id="diag-mic" class="diag-pill idle">Микрофон 0 KB</span>
               <span id="diag-system" class="diag-pill idle">Звук 0 KB</span>
@@ -41,12 +56,10 @@
               <span id="diag-disk" class="diag-pill idle">Сохранено 0</span>
               <span id="transcript-count" class="diag-pill idle">Текст 0</span>
             </div>
-            <div id="panel-tools" class="panel-tools">
-              <button id="copy-btn" class="more-btn" title="Копировать сообщения" aria-label="Копировать сообщения"></button>
-              <button id="more-btn" class="more-btn" title="Settings" aria-label="Settings"></button>
-            </div>
+            <div id="live-transcript" role="log" aria-live="off" tabindex="0" aria-label="Расшифровка разговора"></div>
+            <button id="transcript-latest" class="hidden">К последним репликам</button>
           </div>
-          <div id="live-transcript" role="log" aria-live="polite"></div>
+          <button id="chat-unread" class="hidden">Новый ответ в чате</button>
         </section>
 
         <section id="answer-view" aria-label="Подсказки Cue">
@@ -261,6 +274,7 @@
 
   <script src="icons.js"></script>
   <script src="panel-behavior.js"></script>
+  <script src="transcript-view.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

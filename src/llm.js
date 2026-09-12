@@ -25,7 +25,7 @@ async function fetchWithGatewayErrors(url, init) {
   return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }
 
-async function streamOpenAI({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, baseURL, authMode }) {
+async function streamOpenAI({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, onMetadata, baseURL, authMode }) {
   if (DEBUG) console.log('[DEBUG LLM] streamOpenAI called', { model, baseURL, hasImage: !!imageDataUrl, maxTokens });
   const OpenAI = require('openai');
   const client = new OpenAI({
@@ -53,6 +53,7 @@ async function streamOpenAI({ apiKey, model, system, turns, imageDataUrl, maxTok
     let full = '';
     let finishReason = null;
     for await (const part of stream) {
+      if (typeof part.model === 'string') onMetadata?.({ model: part.model });
       if (part.error) throw new Error(part.error.message || 'API stream failed.');
       const choice = part.choices && part.choices[0];
       if (choice && choice.finish_reason) finishReason = choice.finish_reason;
@@ -70,7 +71,7 @@ async function streamOpenAI({ apiKey, model, system, turns, imageDataUrl, maxTok
   }
 }
 
-async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, baseURL }) {
+async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, onMetadata, baseURL }) {
   if (DEBUG) console.log('[DEBUG LLM] streamAnthropic called', { model, baseURL, hasImage: !!imageDataUrl, maxTokens });
   const Anthropic = require('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey, baseURL });
@@ -90,6 +91,7 @@ async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, max
     const stream = await client.messages.create({ model, max_tokens: maxTokens, system, messages, stream: true });
     let full = '';
     for await (const ev of stream) {
+      if (ev.type === 'message_start' && typeof ev.message?.model === 'string') onMetadata?.({ model: ev.message.model });
       if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') { full += ev.delta.text; onToken(ev.delta.text); }
     }
     if (DEBUG) console.log('[DEBUG LLM] streamAnthropic finished successfully, total length:', full.length);
@@ -100,7 +102,7 @@ async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, max
   }
 }
 
-async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, baseURL }) {
+async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, onMetadata, baseURL }) {
   if (DEBUG) console.log('[DEBUG LLM] streamGemini called', { model, baseURL, hasImage: !!imageDataUrl, maxTokens });
   const { GoogleGenAI } = require('@google/genai');
   const ai = new GoogleGenAI({ apiKey, httpOptions: { baseUrl: baseURL } });
@@ -121,6 +123,7 @@ async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTok
     let full = '';
     let lastFinishReason = 'UNKNOWN';
     for await (const chunk of stream) {
+      if (typeof chunk?.modelVersion === 'string') onMetadata?.({ model: chunk.modelVersion });
       const t = chunk && chunk.text;
       if (t) { full += t; onToken(t); }
       if (chunk && chunk.candidates && chunk.candidates[0] && chunk.candidates[0].finishReason) {

@@ -2,6 +2,11 @@
 (function () {
   const { icon } = window.ICONS;
   const cue = window.cue; // exposed by preload
+  const surface = cue.surface;
+  const ownsCapture = surface === 'panel';
+  document.documentElement.dataset.surface = surface;
+  let workspace = { visible: ['panel', 'toolbar'], workspaceHidden: false };
+
   const $ = (s) => document.querySelector(s);
   const cmdKey = cue.platform === 'darwin' ? '⌘' : 'Ctrl';
   const isCmdOrCtrl = (e) => cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
@@ -133,7 +138,7 @@
     customControls.push(sync);
   }
 
-  document.querySelectorAll('select').forEach(upgradeSelect);
+  document.querySelectorAll('select:not(#screen-select)').forEach(upgradeSelect);
   const sttModeOptions = [...document.querySelectorAll('input[name="stt-mode"]')];
   sttModeOptions.forEach((option) => option.addEventListener('change', () => {
     if (!option.checked) return;
@@ -254,7 +259,7 @@
       fastModel: 'Fast', smartModel: 'Smart', transcription: 'Transcription', separateFromChat: 'separate from chat',
       useForSpeech: 'Use this provider for speech-to-text', sttKey: 'STT key', sendSttBearer: 'Send STT key as a Bearer token',
       sttModel: 'STT model', sttUrl: 'STT URL', sttProtocol: 'STT protocol', trustAudio: 'I trust this destination for API keys and audio', appearance: 'Appearance',
-      language: 'Language', windowDrag: 'Drag Cue panels', dragHint: 'Drag panels by their headers, or the toolbar by its center.', resetPositions: 'Reset panel positions', motionHint: 'Smooth opening, closing and tab changes.', motionReduced: 'Motion is reduced by your system accessibility setting.', backgroundColor: 'Background', accentColor: 'Accent', opacity: 'Opacity', textSize: 'Text size', blurStrength: 'Blur', cornerRadius: 'Corners', animations: 'Interface animations', themes: 'Themes', themeGraphite: 'Graphite', themeMidnight: 'Midnight', themeObsidian: 'Obsidian', themeArctic: 'Arctic', themeForest: 'Forest', themeWine: 'Wine', glassAppearance: 'Glass appearance', layout: 'Layout', behavior: 'Behavior', resetAppearance: 'Reset appearance',
+      language: 'Language', windowDrag: 'Drag Cue panels', dragHint: 'Drag a panel by its header. Hold Shift to move all visible panels.', resetPositions: 'Reset panel positions', motionHint: 'Smooth opening, closing and tab changes.', motionReduced: 'Motion is reduced by your system accessibility setting.', backgroundColor: 'Background', accentColor: 'Accent', opacity: 'Opacity', textSize: 'Text size', blurStrength: 'Blur', cornerRadius: 'Corners', animations: 'Interface animations', themes: 'Themes', themeGraphite: 'Graphite', themeMidnight: 'Midnight', themeObsidian: 'Obsidian', themeArctic: 'Arctic', themeForest: 'Forest', themeWine: 'Wine', glassAppearance: 'Glass appearance', layout: 'Layout', behavior: 'Behavior', resetAppearance: 'Reset appearance',
       placeholder: 'Ask about your screen or conversation, or {key} {enter} for Assist', example: '“A discounted cash flow model values a company by projecting future free cash flows and discounting them to present value using the weighted average cost of capital.”',
       active: 'Active', customApi: 'custom API', officialApi: 'official API', apiNotSet: 'API not set', keys: 'keys', stt: 'STT', liveTranscript: 'Live transcript', hints: 'Cue hints', ready: 'Ready', listening: 'Listening', generating: 'Generating', error: 'Error'
     },
@@ -271,7 +276,7 @@
       fastModel: 'Быстрая', smartModel: 'Умная', transcription: 'Расшифровка', separateFromChat: 'отдельно от чата',
       useForSpeech: 'Использовать провайдер для распознавания речи', sttKey: 'Ключ STT', sendSttBearer: 'Отправлять STT-ключ как Bearer-токен',
       sttModel: 'Модель STT', sttUrl: 'URL STT', sttProtocol: 'Протокол STT', trustAudio: 'Я доверяю этому адресу для API-ключа и аудио', appearance: 'Внешний вид',
-      language: 'Язык интерфейса', windowDrag: 'Перетаскивать панели Cue', dragHint: 'Тяните за заголовок панели, а верхнюю панель — за её середину.', resetPositions: 'Сбросить расположение панелей', motionHint: 'Плавное открытие, закрытие и переключение вкладок.', motionReduced: 'Анимации отключены системной настройкой уменьшения движения.', backgroundColor: 'Фон', accentColor: 'Акцент', opacity: 'Прозрачность', textSize: 'Размер текста', blurStrength: 'Размытие', cornerRadius: 'Скругление', animations: 'Анимации интерфейса', themes: 'Готовые темы', themeGraphite: 'Графит', themeMidnight: 'Полночь', themeObsidian: 'Обсидиан', themeArctic: 'Арктика', themeForest: 'Лес', themeWine: 'Вино', glassAppearance: 'Стекло и цвета', layout: 'Размер текста', behavior: 'Поведение', resetAppearance: 'Сбросить оформление',
+      language: 'Язык интерфейса', windowDrag: 'Перетаскивать панели Cue', dragHint: 'Тяните за заголовок панели. С Shift перемещаются все открытые панели.', resetPositions: 'Сбросить расположение панелей', motionHint: 'Плавное открытие, закрытие и переключение вкладок.', motionReduced: 'Анимации отключены системной настройкой уменьшения движения.', backgroundColor: 'Фон', accentColor: 'Акцент', opacity: 'Прозрачность', textSize: 'Размер текста', blurStrength: 'Размытие', cornerRadius: 'Скругление', animations: 'Анимации интерфейса', themes: 'Готовые темы', themeGraphite: 'Графит', themeMidnight: 'Полночь', themeObsidian: 'Обсидиан', themeArctic: 'Арктика', themeForest: 'Лес', themeWine: 'Вино', glassAppearance: 'Стекло и цвета', layout: 'Размер текста', behavior: 'Поведение', resetAppearance: 'Сбросить оформление',
       placeholder: 'Спроси про экран или разговор, или нажми {key} {enter} для помощи', example: '«Модель дисконтированных денежных потоков оценивает компанию через прогноз свободного денежного потока и приведение его к текущей стоимости по WACC.»',
       active: 'Активен', customApi: 'кастомный API', officialApi: 'официальный API', apiNotSet: 'API не задан', keys: 'ключи', stt: 'STT', liveTranscript: 'Живой конспект', hints: 'Подсказки', ready: 'Готово', listening: 'Слушаю', generating: 'Генерирую', error: 'Ошибка'
     }
@@ -305,7 +310,7 @@
     if (settingsButton) setTooltip(settingsButton, t('settings'));
     const hideButton = $('#hide-btn');
     if (hideButton) {
-      const collapsed = !!hiddenWorkspaceState;
+      const collapsed = !!workspace?.workspaceHidden;
       const panelLabel = collapsed
         ? (language === 'ru' ? 'Показать все панели' : 'Show all panels')
         : (language === 'ru' ? 'Скрыть все панели' : 'Hide all panels');
@@ -414,7 +419,6 @@
   }
 
   const messages = $('#messages');
-  const liveTranscript = $('#live-transcript');
   const transcriptCountEl = $('#transcript-count');
   const assistStateEl = $('#assist-state');
   let transcriptCount = 0;
@@ -456,42 +460,13 @@
     if (messagesFollow) requestAnimationFrame(() => { messages.scrollTop = messages.scrollHeight; });
   }
 
-  function clearLiveTranscript() {
-    liveTranscript.innerHTML = '';
-    transcriptCount = 0;
-    transcriptCountEl.textContent = currentLanguage() === 'ru' ? 'Текст 0' : 'Text 0';
-    transcriptCountEl.className = 'diag-pill idle';
-  }
-
-  function appendTranscript(turn) {
-    if (!turn || !turn.text) return;
-    const atBottom = liveTranscript.scrollHeight - liveTranscript.scrollTop - liveTranscript.clientHeight < 24;
-    const row = document.createElement('div');
-    row.className = 'transcript-row ' + (turn.channel === 'them' ? 'them' : 'you');
-    row.dataset.ts = String(turn.ts || Date.now());
-    const meta = document.createElement('div');
-    meta.className = 'transcript-meta';
-    const speaker = document.createElement('span');
-    speaker.className = 'transcript-speaker';
-    speaker.textContent = turn.speaker || (currentLanguage() === 'ru' ? (turn.channel === 'them' ? 'Собеседник' : 'Вы') : (turn.channel === 'them' ? 'Them' : 'You'));
-    const source = document.createElement('span');
-    source.className = 'transcript-source';
-    source.textContent = currentLanguage() === 'ru' ? (turn.channel === 'them' ? 'система' : 'микрофон') : (turn.channel === 'them' ? 'system' : 'mic');
-    const time = document.createElement('time');
-    time.className = 'transcript-time';
-    time.textContent = new Date(turn.ts || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    meta.append(speaker, source, time);
-    const text = document.createElement('div');
-    text.className = 'transcript-text';
-    text.textContent = turn.text;
-    row.append(meta, text);
-    const later = [...liveTranscript.children].find((item) => Number(item.dataset.ts) > Number(row.dataset.ts));
-    liveTranscript.insertBefore(row, later || null);
-    transcriptCount += 1;
-    transcriptCountEl.textContent = currentLanguage() === 'ru' ? `Текст ${transcriptCount}` : `Text ${transcriptCount}`;
-    transcriptCountEl.className = 'diag-pill ok';
-    if (atBottom) requestAnimationFrame(() => { liveTranscript.scrollTop = liveTranscript.scrollHeight; });
-  }
+  const transcriptView = new window.CueTranscriptView({ language: currentLanguage, onCount: count => {
+    transcriptCount = count;
+    transcriptCountEl.textContent = currentLanguage() === 'ru' ? `Текст ${count}` : `Text ${count}`;
+    transcriptCountEl.className = `diag-pill ${count ? 'ok' : 'idle'}`;
+  }});
+  function clearLiveTranscript() { transcriptView.clear(); }
+  function appendTranscript(turn) { transcriptView.update({ upserts: [turn] }); }
 
   function addUserBubble(text) {
     const b = document.createElement('div');
@@ -500,20 +475,40 @@
     messages.appendChild(b);
   }
 
-  function startAi(small, label) {
-    if (label) {
-      const marker = document.createElement('div');
-      marker.className = 'answer-label';
-      marker.textContent = label;
-      messages.appendChild(marker);
-    }
+  function modeLabel(mode) {
+    const labels = currentLanguage() === 'ru'
+      ? { ask: 'Чат', assist: 'Помощь', say: 'Что сказать', followup: 'Уточнения', recap: 'Итоги', auto: 'Автопомощь', leetcode: 'Задача с экрана' }
+      : { ask: 'Chat', assist: 'Assist', say: 'What to say', followup: 'Follow-up', recap: 'Recap', auto: 'Auto assist', leetcode: 'Screen task' };
+    return labels[mode] || labels.ask;
+  }
+  function responseMetadata(card, meta) {
+    if (!card) return;
+    if (meta.requestedModel) card.dataset.requestedModel = meta.requestedModel;
+    if (meta.reportedModel) card.dataset.reportedModel = meta.reportedModel;
+    if (meta.provider) card.dataset.provider = meta.provider;
+    const model = card.querySelector('.answer-model');
+    model.textContent = card.dataset.reportedModel || card.dataset.requestedModel || 'Cue';
+    model.title = `${card.dataset.provider || ''} · ${card.dataset.reportedModel
+      ? (currentLanguage() === 'ru' ? 'Модель указана API' : 'Model reported by API')
+      : (currentLanguage() === 'ru' ? 'Модель из запроса; API не подтвердил имя' : 'Requested model; name not confirmed by API')}`;
+  }
+  function startAi(small, meta = {}) {
+    const card = document.createElement('article');
+    card.className = 'ai-message';
+    card.dataset.requestId = meta.requestId || '';
+    card.dataset.mode = meta.mode || 'ask';
+    card.dataset.status = 'streaming';
+    card.setAttribute('aria-label', currentLanguage() === 'ru' ? 'Ответ ИИ' : 'AI response');
+    const header = document.createElement('div'); header.className = 'answer-header';
+    const model = document.createElement('span'); model.className = 'answer-model';
+    const badge = document.createElement('span'); badge.className = 'mode-badge'; badge.textContent = modeLabel(meta.mode);
+    header.append(model, badge); card.append(header);
+    responseMetadata(card, meta);
     aiEl = document.createElement('div');
     aiEl.className = 'ai-text' + (small ? ' small' : '');
     aiEl.dataset.raw = '';
-    caretEl = document.createElement('span');
-    caretEl.className = 'ai-caret';
-    aiEl.appendChild(caretEl);
-    messages.appendChild(aiEl);
+    caretEl = document.createElement('span'); caretEl.className = 'ai-caret';
+    aiEl.appendChild(caretEl); card.append(aiEl); messages.appendChild(card);
     keepMessagesAtBottom();
   }
 
@@ -528,6 +523,8 @@
     if (!aiEl) return;
     const raw = aiEl.dataset.raw || '';
     aiEl.innerHTML = renderMarkdown(raw);
+    if (aiEl.parentElement.dataset.status !== 'error') aiEl.parentElement.dataset.status = 'done';
+    if (transcriptView.state === 'full') $('#chat-unread').classList.remove('hidden');
     aiEl = null; caretEl = null;
   }
 
@@ -537,6 +534,7 @@
   function runMode(mode, text) {
     if (busy) return;
     setBusy(true);
+    if (transcriptView.state === 'full') transcriptView.setState('compact');
     cue.ask({ mode, text: text || '' });
   }
 
@@ -581,7 +579,10 @@
   }
   $('#send-btn').addEventListener('click', send);
   $('#copy-btn').addEventListener('click', async () => {
-    const text = [liveTranscript.innerText.trim(), messages.innerText.trim()].filter(Boolean).join('\n\n');
+    const chatText = [...messages.children].map(el => el.classList.contains('user-bubble')
+      ? `${currentLanguage() === 'ru' ? 'Вы' : 'You'}: ${el.textContent}`
+      : `${el.querySelector('.answer-model')?.textContent || 'Cue'} [${el.querySelector('.mode-badge')?.textContent || ''}]:\n${el.querySelector('.ai-text')?.dataset.raw || ''}`).join('\n\n');
+    const text = [transcriptView.text(), chatText].filter(Boolean).join('\n\n');
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -606,7 +607,6 @@
   });
 
   // Hide / restore the whole workspace while preserving which panels were open.
-  let hiddenWorkspaceState = null;
   function setWorkspaceToggleState(hidden) {
     $('#hide-btn').classList.toggle('on', !hidden);
     $('#hide-btn').setAttribute('aria-pressed', String(!hidden));
@@ -616,36 +616,15 @@
     setTooltip($('#hide-btn'), label);
     $('#hide-btn').setAttribute('aria-label', label);
   }
-  $('#hide-btn').addEventListener('click', () => {
-    if (!hiddenWorkspaceState) {
-      hiddenWorkspaceState = {
-        main: !$('#panel').classList.contains('collapsed'),
-        catalog: !$('#catalog-scrim').classList.contains('hidden'),
-        settings: !$('#settings-scrim').classList.contains('hidden'),
-        onboarding: !$('#onboard-scrim').classList.contains('hidden')
-      };
-      $('#panel').classList.add('collapsed');
-      $('#catalog-scrim').classList.add('hidden');
-      $('#settings-scrim').classList.add('hidden');
-      $('#onboard-scrim').classList.add('hidden');
-      $('#search-btn').classList.remove('on');
-      $('#more-btn').classList.remove('on');
-      $('#logo-btn').classList.remove('on');
-      setWorkspaceToggleState(true);
-      return;
-    }
-
-    const restore = hiddenWorkspaceState;
-    hiddenWorkspaceState = null;
-    $('#panel').classList.toggle('collapsed', !restore.main);
-    $('#catalog-scrim').classList.toggle('hidden', !restore.catalog);
-    $('#settings-scrim').classList.toggle('hidden', !restore.settings);
-    $('#onboard-scrim').classList.toggle('hidden', !restore.onboarding);
-    $('#search-btn').classList.toggle('on', restore.catalog);
-    $('#more-btn').classList.toggle('on', restore.settings);
-    $('#logo-btn').classList.toggle('on', restore.onboarding);
-    setWorkspaceToggleState(false);
-  });
+  $('#hide-btn').addEventListener('click', () => void cue.workspaceToggle());
+  function syncWorkspace(next) {
+    workspace = next;
+    setWorkspaceToggleState(next.workspaceHidden);
+    $('#search-btn').classList.toggle('on', next.visible.includes('catalog') && !next.workspaceHidden);
+    $('#more-btn').classList.toggle('on', next.visible.includes('settings') && !next.workspaceHidden);
+    $('#logo-btn').classList.toggle('on', next.visible.includes('onboard') && !next.workspaceHidden);
+  }
+  cue.on('workspace:state', syncWorkspace);
 
   // Stop = start/stop listening. Kick off system-audio capture straight from the click so
   // the user-gesture is fresh for getDisplayMedia (loopback capture needs it).
@@ -704,15 +683,19 @@
     for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
     return Math.sqrt(sum / samples.length);
   }
+  let lastLevelSent = 0;
   function noteAudio(channel, data) {
     captureMetrics[channel === 'mic' ? 'micBytes' : 'systemBytes'] += data.byteLength || 0;
     const rms = pcmRms(data);
     if (rms >= 240) usefulAudioAt[channel] = Date.now();
-    if (channel === 'mic') setMicActivityLevel(rms);
+    if (channel === 'mic') {
+      setMicActivityLevel(rms);
+      if (Date.now() - lastLevelSent > 80) { lastLevelSent = Date.now(); cue.audioLevel(rms); }
+    }
     renderDiagnostics();
   }
   setInterval(() => {
-    if (!captureWanted) return;
+    if (!ownsCapture || !captureWanted) return;
     const latest = Math.max(usefulAudioAt.mic, usefulAudioAt.system);
     if (latest && Date.now() - latest < 45000) return;
     if (Date.now() - silenceWarnedAt < 45000) return;
@@ -761,14 +744,13 @@
 
   function removeAi() {
     if (!aiEl) return;
-    const marker = aiEl.previousElementSibling;
-    if (marker && marker.classList.contains('answer-label')) marker.remove();
-    aiEl.remove();
+    aiEl.closest('.ai-message')?.remove();
     aiEl = null; caretEl = null;
   }
 
   function setCaptureHealth(channel, value) {
     captureHealth[channel] = value;
+    if (ownsCapture) cue.captureHealth({ ...captureHealth });
     updateCaptureHealth();
   }
 
@@ -804,6 +786,7 @@
   // ---- capture: mic (renderer side) --------------------------------------
   let audioCtx = null, micStream = null, micNode = null, micProc = null, micStartPromise = null;
   async function startMic() {
+    if (!ownsCapture) return false;
     if (micStream) return true;
     if (micStartPromise) return micStartPromise;
     setCaptureHealth('mic', 'starting');
@@ -861,6 +844,7 @@
   // ---- capture: system/meeting audio (getDisplayMedia loopback, in cue's process) ----
   let sysStream = null, sysCtx = null, sysNode = null, sysProc = null, sysStartPromise = null;
   async function startSystemAudio() {
+    if (!ownsCapture) return false;
     if (sysStream) return true;
     if (sysStartPromise) return sysStartPromise;
     setCaptureHealth('system', 'starting');
@@ -920,17 +904,23 @@
   }
 
   // ---- events from main --------------------------------------------------
-  cue.on('capture:state', ({ active }) => {
+  cue.on('capture:state', ({ active, initial }) => {
     captureWanted = active;
+    transcriptView.capture(active, initial);
     renderCaptureControl(active);
     if (active) {
       captureMetrics.micBytes = 0; captureMetrics.systemBytes = 0; captureMetrics.stt = 'idle'; captureMetrics.disk = 'idle'; captureMetrics.provider = ''; captureMetrics.sttProcessed = 0; captureMetrics.diskWrites = 0;
       usefulAudioAt.mic = Date.now(); usefulAudioAt.system = Date.now(); silenceWarnedAt = 0;
-      void startMic(); void startSystemAudio(); clearMessages(); clearLiveTranscript(); assistStateEl.textContent = t('listening');
+      void startMic(); void startSystemAudio();
+      if (!initial) { clearMessages(); clearLiveTranscript(); }
+      assistStateEl.textContent = t('listening');
     } else { stopMic(); stopSystemAudio(); assistStateEl.textContent = t('ready'); }
     updateCaptureHealth();
   });
+  cue.on('audio:level', setMicActivityLevel);
+  cue.on('capture:health', health => { Object.assign(captureHealth, health); updateCaptureHealth(); });
   cue.on('transcript', appendTranscript);
+  cue.on('transcript:updated', changes => transcriptView.update(changes));
   cue.on('diagnostics', (data) => {
     if (data.stt === 'ok') captureMetrics.sttProcessed += 1;
     if (data.disk === 'ok') captureMetrics.diskWrites += 1;
@@ -941,19 +931,26 @@
   });
   cue.on('session:loaded', ({ transcript }) => {
     clearLiveTranscript();
-    for (const turn of transcript || []) appendTranscript(turn);
+    transcriptView.update({ upserts: transcript || [] });
   });
-  cue.on('llm:start', ({ userBubble, small, append, responseLabel }) => {
-    if (!append) clearMessages();
-    if (userBubble) addUserBubble(userBubble);
-    startAi(!!small, append ? responseLabel : '');
+  cue.on('llm:start', meta => {
+    // Global shortcuts arrive from main without going through runMode().
+    if (meta.mode !== 'auto' && transcriptView.state === 'full') transcriptView.setState('compact');
+    if (!meta.append) clearMessages();
+    if (meta.userBubble) addUserBubble(meta.userBubble);
+    startAi(!!meta.small, meta);
     assistStateEl.textContent = t('generating');
     setBusy(true);
+  });
+  cue.on('llm:metadata', meta => {
+    const card = [...messages.querySelectorAll('.ai-message')].find(el => el.dataset.requestId === meta.requestId);
+    responseMetadata(card, meta);
   });
   cue.on('llm:token', ({ text }) => appendToken(text));
   cue.on('llm:done', ({ suppress }) => { if (suppress) removeAi(); else finalizeAi(); assistStateEl.textContent = t('ready'); setBusy(false); });
   cue.on('llm:error', ({ message }) => {
     if (!aiEl) startAi(true);
+    aiEl.closest('.ai-message').dataset.status = 'error';
     aiEl.dataset.raw = message; finalizeAi(); setBusy(false);
     assistStateEl.textContent = t('error');
   });
@@ -1080,17 +1077,8 @@
       row.append(title, meta, snippet, actions); catalogResults.appendChild(row);
     }
   }
-  $('#search-btn').addEventListener('click', async () => {
-    const opening = catalogScrim.classList.contains('hidden');
-    if (opening) closeOnboard();
-    catalogScrim.classList.toggle('hidden', !opening);
-    $('#search-btn').classList.toggle('on', opening);
-    if (opening) { await renderCatalog(); catalogQuery.focus(); }
-  });
-  $('#catalog-close').addEventListener('click', () => {
-    catalogScrim.classList.add('hidden');
-    $('#search-btn').classList.remove('on');
-  });
+  $('#search-btn').addEventListener('click', () => void cue.windowToggle('catalog'));
+  $('#catalog-close').addEventListener('click', () => void cue.windowClose());
   catalogQuery.addEventListener('input', () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(() => void renderCatalog(), 180); });
 
   // ---- settings ----------------------------------------------------------
@@ -1171,6 +1159,7 @@
   document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsTab(button.dataset.settingsTab)));
 
   function openSettings() {
+    if (surface !== 'settings') { void cue.windowOpen('settings'); return; }
     if (!settings) return;
     closeOnboard();
     fillSettings();
@@ -1186,12 +1175,10 @@
     if (saved) {
       scrim.classList.add('hidden');
       $('#more-btn').classList.remove('on');
+      await cue.windowClose();
     }
   }
-  $('#more-btn').addEventListener('click', () => {
-    if (scrim.classList.contains('hidden')) openSettings();
-    else void closeSettings();
-  });
+  $('#more-btn').addEventListener('click', () => void cue.windowToggle('settings'));
   $('#s-close').addEventListener('click', closeSettings);
   cue.on('settings:open', openSettings);
 
@@ -1416,9 +1403,7 @@
   });
   $('#appearance-drag').addEventListener('change', () => { captureAppearanceFields(); applyAppearance(); });
   $('#panel-positions-reset').addEventListener('click', async () => {
-    settings.appearance.panelPositions = {};
-    panelBehavior?.refresh();
-    try { await cue.settingsSet({ appearance: { panelPositions: {} } }); }
+    try { await cue.windowReset(); }
     catch (error) { showStatus(error.message); }
   });
   reducedMotion.addEventListener('change', () => { if (settings) applyAppearance(); });
@@ -1553,64 +1538,6 @@
     }
   });
 
-  function bindPanelResizer(handle) {
-    handle.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const startPanel = Number(settings.appearance.panelWidth) || 624;
-      const panelEdge = handle.dataset.resizePanel;
-      const sidecar = handle.dataset.resizeSidecar;
-      const heightTarget = handle.dataset.resizeHeight;
-      const edge = handle.dataset.resizeEdge || panelEdge;
-      const widthKey = sidecar ? `${sidecar}Width` : null;
-      const heightKey = heightTarget ? `${heightTarget}Height` : null;
-      const topKey = heightTarget === 'panel' ? 'panelOffsetY' : (heightTarget ? `${heightTarget}Top` : null);
-      const startWidth = widthKey ? Number(settings.appearance[widthKey]) || 440 : 0;
-      const startHeight = heightKey ? Number(settings.appearance[heightKey]) || (heightTarget === 'panel' ? 540 : 690) : 0;
-      const startTop = topKey ? Number(settings.appearance[topKey]) || 0 : 0;
-      handle.classList.add('dragging');
-      document.body.classList.add('resizing-panels');
-      document.body.dataset.resizeAxis = heightTarget ? 'y' : 'x';
-      handle.setPointerCapture(event.pointerId);
-      const move = (moveEvent) => {
-        const dx = moveEvent.clientX - startX;
-        const dy = moveEvent.clientY - startY;
-        if (panelEdge) {
-          const direction = panelEdge === 'right' ? 1 : -1;
-          settings.appearance.panelWidth = Math.min(760, Math.max(520, Math.round((startPanel + direction * dx * 2) / 4) * 4));
-        } else if (sidecar) {
-          const direction = edge === 'right' ? 1 : -1;
-          settings.appearance[widthKey] = Math.min(520, Math.max(300, Math.round((startWidth + direction * dx) / 4) * 4));
-        } else if (heightTarget) {
-          const minHeight = heightTarget === 'panel' ? 280 : 320;
-          const available = Math.max(minHeight, window.innerHeight - (edge === 'top' ? Math.max(4, startTop + dy) : startTop) - 8);
-          settings.appearance[heightKey] = Math.min(available, Math.max(minHeight, Math.round((startHeight + (edge === 'top' ? -dy : dy)) / 4) * 4));
-          if (edge === 'top') settings.appearance[topKey] = Math.max(heightTarget === 'panel' ? -8 : 4, Math.min(260, Math.round(startTop + dy)));
-        }
-        applyAppearance();
-      };
-      const finish = async () => {
-        handle.classList.remove('dragging');
-        document.body.classList.remove('resizing-panels');
-        delete document.body.dataset.resizeAxis;
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', finish);
-        handle.removeEventListener('pointercancel', finish);
-        const layout = { panelWidth: settings.appearance.panelWidth };
-        if (widthKey) layout[widthKey] = settings.appearance[widthKey];
-        if (heightKey) layout[heightKey] = settings.appearance[heightKey];
-        if (topKey) layout[topKey] = settings.appearance[topKey];
-        settings = await cue.settingsSet({ appearance: layout });
-      };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', finish);
-      handle.addEventListener('pointercancel', finish);
-    });
-  }
-  document.querySelectorAll('.panel-resizer').forEach(bindPanelResizer);
-
   // ---- click-through: only the UI blocks the mouse; empty gaps pass to your screen ----
   let ignoring = null;
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
@@ -1725,6 +1652,7 @@
     $('#ob-skip').style.visibility = obIndex === steps.length - 1 ? 'hidden' : 'visible';
   }
   function showOnboard() {
+    if (surface !== 'onboard') { void cue.windowOpen('onboard'); return; }
     catalogScrim.classList.add('hidden');
     $('#search-btn').classList.remove('on');
     obIndex = 0;
@@ -1738,6 +1666,7 @@
     $('#logo-btn').classList.remove('on');
   }
   async function toggleOnboard() {
+    if (surface !== 'onboard') { await cue.windowToggle('onboard'); return; }
     if (!obScrim.classList.contains('hidden')) { closeOnboard(); return; }
     if (!scrim.classList.contains('hidden')) {
       await closeSettings();
@@ -1747,6 +1676,7 @@
   }
   async function finishOnboard() {
     closeOnboard();
+    await cue.windowClose();
     if (settings && !settings.onboarded) { settings.onboarded = true; await cue.settingsSet({ onboarded: true }); }
   }
   $('#ob-next').addEventListener('click', () => {
@@ -1757,14 +1687,31 @@
   $('#ob-skip').addEventListener('click', finishOnboard);
   $('#logo-btn').addEventListener('click', () => void toggleOnboard());
 
+  async function refreshDisplays() {
+    if (surface !== 'panel') return;
+    const data = await cue.displaysGet();
+    const select = $('#screen-select');
+    select.replaceChildren();
+    const ru = currentLanguage() === 'ru';
+    $('#screen-label').textContent = ru ? 'Экран для ИИ' : 'AI screen';
+    if (!data.displays.some(d => d.id === data.selectedId)) {
+      const missing = new Option(ru ? 'Монитор отключён — выберите' : 'Display disconnected — select', data.selectedId);
+      missing.disabled = true; select.add(missing);
+    }
+    data.displays.forEach((d, i) => select.add(new Option(`${ru ? 'Экран' : 'Screen'} ${i + 1} · ${d.width} × ${d.height}`, d.id)));
+    select.value = data.selectedId;
+    select.title = ru ? 'Экран для анализа ИИ. Перемещение Cue не меняет выбор.' : 'Screen used for AI analysis. Moving Cue does not change it.';
+  }
+  $('#screen-select').addEventListener('change', async event => {
+    try { await cue.displaySelect(event.target.value); }
+    catch (error) { showStatus(error.message); await refreshDisplays(); }
+  });
+  cue.on('displays:changed', () => void refreshDisplays());
+
   // ---- boot --------------------------------------------------------------
   (async function boot() {
     settings = await cue.settingsGet();
-    panelBehavior = new window.CuePanelBehavior(() => settings.appearance, async (positions) => {
-      settings.appearance.panelPositions = positions;
-      try { await cue.settingsSet({ appearance: { panelPositions: positions } }); }
-      catch (error) { showStatus(error.message); }
-    });
+    panelBehavior = new window.CuePanelBehavior(() => settings.appearance);
     if (cue.platform !== 'darwin') {
       $('#placeholder').innerHTML = 'Ask about your screen or conversation, or <span class="keycap">Ctrl</span><span class="keycap">⏎</span> for Assist';
     }
@@ -1781,7 +1728,27 @@
     if (st.active) { void startMic(); void startSystemAudio(); }
     updateCaptureHealth();
     renderRecovery(await cue.sessionsList());
-    if (!settings.onboarded) showOnboard();
+    if (surface === 'settings') openSettings();
+    if (surface === 'catalog') { catalogScrim.classList.remove('hidden'); await renderCatalog(); }
+    if (surface === 'onboard') showOnboard();
+    syncWorkspace(await cue.workspaceState());
+    await refreshDisplays();
+    cue.on('surface:opened', async () => {
+      settings = await cue.settingsGet();
+      if (surface === 'settings') openSettings();
+      if (surface === 'catalog') { await renderCatalog(); catalogQuery.focus(); }
+      if (surface === 'onboard') showOnboard();
+    });
+    cue.on('surface:close', () => { if (surface === 'settings') void closeSettings(); });
+    cue.on('settings:changed', next => {
+      // Keep an in-progress settings form intact when another panel toggles Smart.
+      if (surface === 'settings' && !scrim.classList.contains('hidden') && !settingsSaving) {
+        settings.smart = next.smart;
+        return;
+      }
+      settings = next; applyLanguage(); applyAppearance(); transcriptView.render(); void refreshDisplays();
+      smartBtn.classList.toggle('on', !!settings.smart);
+    });
 
     if (cue.platform === 'win32') {
       const keycaps = document.querySelectorAll('#placeholder .keycap');
@@ -1789,5 +1756,6 @@
     }
     applyLanguage();
     document.documentElement.dataset.ready = 'true';
+    cue.surfaceReady();
   })();
 })();

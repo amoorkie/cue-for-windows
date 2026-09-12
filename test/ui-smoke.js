@@ -1,357 +1,149 @@
-const path = require('path');
-const os = require('os');
+// Native panel integration with synthetic transcript/LLM events. No audio or API calls.
+const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { app, BrowserWindow } = require('electron');
-
-app.setPath('userData', path.join(os.tmpdir(), 'cue-ui-smoke-' + process.pid));
-process.env.CUE_DOCUMENTS_DIR = path.join(os.tmpdir(), 'cue-ui-smoke-documents-' + process.pid);
-fs.mkdirSync(process.env.CUE_DOCUMENTS_DIR, { recursive: true });
-fs.writeFileSync(path.join(process.env.CUE_DOCUMENTS_DIR, '2026-09-12 — Проверка каталога.md'), '# Проверка каталога\n\n## Итог разговора\n\nСогласовали демонстрацию в пятницу.\n');
-
+const os = require('node:os');
+const path = require('node:path');
+const { app, clipboard, screen, globalShortcut } = require('electron');
+globalShortcut.register = () => true; // Do not claim the running app's shortcuts.
+const { wait, until, surface, js, screenshot } = require('./electron-helpers');
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-ui-'));
+app.setPath('userData', root);
+process.env.CUE_DOCUMENTS_DIR = path.join(root, 'documents');
+process.env.CUE_NO_PROTECT = '1';
+fs.mkdirSync(process.env.CUE_DOCUMENTS_DIR);
+fs.writeFileSync(path.join(process.env.CUE_DOCUMENTS_DIR, 'meeting.md'), '# Проверка каталога\n\nСогласовали демонстрацию в пятницу.');
+fs.writeFileSync(path.join(root, 'cue-data.json'), JSON.stringify({ onboarded: true,
+  appearance: { panelWidth: 760, panelHeight: 884, backgroundColor: '#08090c', accentColor: '#7c8cff', backgroundOpacity: .9, cornerRadius: 10, textScale: .88 } }));
 require('../main');
-
-function waitForWindow(timeoutMs = 10000) {
-  const started = Date.now();
-  return new Promise((resolve, reject) => {
-    const poll = async () => {
-      const win = BrowserWindow.getAllWindows()[0];
-      if (win && !win.isDestroyed() && !win.webContents.isLoading()) {
-        const ready = await win.webContents.executeJavaScript("document.documentElement.dataset.ready === 'true'");
-        if (ready) return resolve(win);
-      }
-      if (Date.now() - started > timeoutMs) return reject(new Error('Timed out waiting for the cue window.'));
-      setTimeout(poll, 100);
-    };
-    poll();
-  });
-}
-
 app.whenReady().then(async () => {
+  const images = [];
   try {
-    const win = await waitForWindow();
-    const result = await win.webContents.executeJavaScript(`(async () => {
-      const required = [
-        'provider-select', 'provider-api-key', 'base-url', 'endpoint-note', 'endpoint-trust', 'auth-mode-row',
-        'settings-provider-tab', 'settings-interface-tab', 'settings-provider-pane', 'settings-interface-pane',
-        'model-fast', 'model-smart', 'stt-model'
-        , 'appearance-language', 'appearance-drag', 'appearance-color', 'appearance-opacity', 'appearance-opacity-value'
-        , 'appearance-text-scale', 'appearance-text-scale-value'
-        , 'appearance-accent', 'appearance-blur', 'appearance-blur-value', 'appearance-radius', 'appearance-radius-value', 'appearance-animations', 'appearance-presets', 'appearance-reset'
-        , 'copy-btn', 'custom-tooltip'
-        , 'stop-btn', 'live-dot', 'mic-activity', 'hide-btn', 'logo-btn'
-        , 'stt-protocol-field', 'stt-protocol'
-        , 'panel-scroll', 'composer-dock', 'composer', 'recovery-panel', 'recovery-list'
-        , 'panel-topbar', 'panel-tools', 'capture-diagnostics', 'messages'
-        , 'search-btn', 'catalog-scrim', 'catalog', 'settings'
-      ];
-      const missing = required.filter((id) => !document.getElementById(id));
-      const emptyChatInitially = document.getElementById('messages').childElementCount === 0;
-      const mainWindowSimplified = document.getElementById('search-btn').parentElement.id === 'panel-tools-left'
-        && document.getElementById('more-btn').parentElement.id === 'panel-tools'
-        && !document.querySelector('#live-view .view-head')
-        && !document.querySelector('#answer-view .view-head')
-        && getComputedStyle(document.getElementById('live-view')).borderBottomWidth === '0px'
-        && getComputedStyle(document.getElementById('live-transcript')).display === 'none';
-      const recoveryItem = document.querySelector('.recovery-item');
-      const recoveryRedesigned = !recoveryItem || ([...recoveryItem.querySelectorAll('button')].map((button) => button.getAttribute('aria-label')).join(' ') === 'Продолжить Итог RAW Убрать'
-        && getComputedStyle(recoveryItem).gridTemplateColumns !== 'none'
-        && getComputedStyle(recoveryItem.querySelector('.recovery-actions')).flexWrap === 'nowrap'
-        && !!recoveryItem.querySelector('.recovery-actions .dismiss.icon-only svg'));
-      const resizers = [...document.querySelectorAll('.panel-resizer')];
-      const resizersAvailable = resizers.length === 12
-        && resizers.filter((handle) => handle.classList.contains('panel-resizer-left') || handle.classList.contains('panel-resizer-right')).every((handle) => getComputedStyle(handle).cursor === 'ew-resize')
-        && resizers.filter((handle) => handle.classList.contains('panel-resizer-top') || handle.classList.contains('panel-resizer-bottom')).every((handle) => getComputedStyle(handle).cursor === 'ns-resize');
-      const customControlsSkinned = document.querySelectorAll('.custom-select').length >= 3
-        && document.querySelectorAll('.color-control').length === 2
-        && document.querySelectorAll('.color-option').length === 20
-        && !!document.getElementById('appearance-opacity').style.getPropertyValue('--range-progress')
-        && getComputedStyle(document.getElementById('appearance-animations')).appearance === 'none'
-        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).marginLeft === '0px'
-        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).position === 'absolute'
-        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).right === '12px'
-        && getComputedStyle(document.getElementById('endpoint-trust-row')).alignItems === 'center'
-        && parseFloat(getComputedStyle(document.getElementById('endpoint-note')).marginBottom) >= 5;
-      document.getElementById('search-btn').click();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      document.getElementById('more-btn').click();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const panelRect = document.getElementById('panel-wrap').getBoundingClientRect();
-      const catalogRect = document.getElementById('catalog').getBoundingClientRect();
-      const settingsRect = document.getElementById('settings').getBoundingClientRect();
-      const sidecarsNonModal = catalogRect.right < panelRect.left
-        && settingsRect.left > panelRect.right
-        && getComputedStyle(document.getElementById('catalog-scrim')).pointerEvents === 'none'
-        && getComputedStyle(document.getElementById('settings-scrim')).pointerEvents === 'none';
-      document.getElementById('hide-btn').click();
-      const allPanelsHidden = document.getElementById('panel').classList.contains('collapsed')
-        && document.getElementById('catalog-scrim').classList.contains('hidden')
-        && document.getElementById('settings-scrim').classList.contains('hidden')
-        && document.getElementById('onboard-scrim').classList.contains('hidden')
-        && !document.getElementById('hide-btn').classList.contains('on');
-      document.getElementById('hide-btn').click();
-      const openPanelsRestored = !document.getElementById('panel').classList.contains('collapsed')
-        && !document.getElementById('catalog-scrim').classList.contains('hidden')
-        && !document.getElementById('settings-scrim').classList.contains('hidden')
-        && document.getElementById('onboard-scrim').classList.contains('hidden')
-        && document.getElementById('search-btn').classList.contains('on')
-        && document.getElementById('more-btn').classList.contains('on')
-        && document.getElementById('hide-btn').classList.contains('on');
-      const globalPanelsToggle = allPanelsHidden && openPanelsRestored;
-      document.getElementById('search-btn').click();
-      const meetingsToggleClosed = document.getElementById('catalog-scrim').classList.contains('hidden')
-        && !document.getElementById('search-btn').classList.contains('on');
-      document.getElementById('search-btn').click();
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      document.getElementById('more-btn').click();
-      for (let i = 0; i < 50 && !document.getElementById('settings-scrim').classList.contains('hidden'); i++) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      const settingsToggleClosed = document.getElementById('settings-scrim').classList.contains('hidden')
-        && !document.getElementById('more-btn').classList.contains('on');
-      document.getElementById('logo-btn').click();
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      const onboardingOpened = document.getElementById('onboard').getBoundingClientRect().right < document.getElementById('panel-wrap').getBoundingClientRect().left
-        && document.getElementById('catalog-scrim').classList.contains('hidden')
-        && !document.getElementById('onboard-scrim').classList.contains('hidden')
-        && document.getElementById('logo-btn').classList.contains('on');
-      const onboardingRussian = document.getElementById('ob-title').textContent === 'Добро пожаловать в Cue'
-        && document.getElementById('ob-next').textContent === 'Далее'
-        && document.getElementById('ob-skip').textContent === 'Пропустить';
-      document.getElementById('hide-btn').click();
-      const onboardingHiddenWithWorkspace = document.getElementById('onboard-scrim').classList.contains('hidden');
-      document.getElementById('hide-btn').click();
-      const onboardingRestoredWithWorkspace = !document.getElementById('onboard-scrim').classList.contains('hidden')
-        && document.getElementById('logo-btn').classList.contains('on');
-      document.getElementById('logo-btn').click();
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      const onboardingToggleClosed = document.getElementById('onboard-scrim').classList.contains('hidden')
-        && !document.getElementById('logo-btn').classList.contains('on');
-      document.getElementById('more-btn').click();
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      const panelButtonsToggle = meetingsToggleClosed && settingsToggleClosed && onboardingOpened && onboardingHiddenWithWorkspace
-        && onboardingRestoredWithWorkspace && onboardingToggleClosed
-        && !document.getElementById('settings-scrim').classList.contains('hidden');
-      const catalogCards = [...document.querySelectorAll('.catalog-item')];
-      const catalogCardsSimplified = catalogCards.length > 0 && catalogCards.every((card) => {
-        const labels = [...card.querySelectorAll('.catalog-action')].map((button) => button.textContent);
-        return labels.length === 3 && labels.join(' ') === 'Открыть DOCX PDF'
-          && !!card.querySelector('.catalog-action.primary')
-          && card.querySelectorAll('.catalog-action.format').length === 2;
-      });
-      const providerSelect = document.getElementById('provider-select');
-      providerSelect.value = 'compatible';
-      providerSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const baseInput = document.getElementById('base-url');
-      baseInput.value = 'http://localhost:11434/v1';
-      baseInput.dispatchEvent(new Event('input', { bubbles: true }));
-      const endpointNoteRect = document.getElementById('endpoint-note').getBoundingClientRect();
-      const endpointTrustRect = document.getElementById('endpoint-trust-row').getBoundingClientRect();
-      const endpointHelperSeparated = endpointNoteRect.bottom + 8 <= endpointTrustRect.top
-        && parseFloat(getComputedStyle(document.getElementById('endpoint-note')).paddingTop) >= 8;
-      const endpointHelperLocalized = document.getElementById('endpoint-note').textContent.startsWith('Пользовательский эндпоинт:')
-        && !!document.getElementById('auth-mode-row').dataset.tooltip
-        && /Authorization: Bearer/.test(document.getElementById('auth-mode-row').dataset.tooltip);
-      const providerSetupSimplified = document.querySelectorAll('#settings-provider-pane > .provider-card').length === 1
-        && document.querySelectorAll('#analysis-provider-card > .s-field').length === 3
-        && document.querySelectorAll('#settings-provider-pane .settings-advanced').length === 1
-        && getComputedStyle(document.querySelector('#settings-provider-pane .settings-advanced-body')).display === 'flex'
-        && [...providerSelect.options].filter((option) => !option.disabled).length === 3
-        && !document.getElementById('stt-provider-select')
-        && !document.getElementById('stt-api-key')
-        && !document.getElementById('stt-base-url');
-      document.getElementById('model-fast').value = 'local-model';
-      document.getElementById('stt-model').value = 'local-stt-model';
-      document.getElementById('provider-api-key').value = 'shared-test-key';
-      document.getElementById('appearance-language').value = 'ru';
-      document.getElementById('appearance-color').value = '#243047';
-      document.getElementById('appearance-color').dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('appearance-accent').value = '#7c8cff';
-      document.getElementById('appearance-accent').dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('appearance-opacity').value = '64';
-      document.getElementById('appearance-opacity').dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('appearance-text-scale').value = '20';
-      document.getElementById('appearance-text-scale').dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('appearance-blur').value = '46';
-      document.getElementById('appearance-blur').dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('appearance-radius').value = '22';
-      document.getElementById('appearance-radius').dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('appearance-animations').checked = false;
-      document.getElementById('appearance-animations').dispatchEvent(new Event('change', { bubbles: true }));
-      document.getElementById('send-auth').checked = true;
-      document.getElementById('endpoint-trust').checked = true;
-      document.getElementById('endpoint-trust').dispatchEvent(new Event('change', { bubbles: true }));
-      document.getElementById('s-close').click();
-      for (let i = 0; i < 50 && !document.getElementById('settings-scrim').classList.contains('hidden'); i++) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      const saved = await window.cue.settingsGet();
-      await window.cue.settingsSet({ stt: { routes: { openai: { model: 'whisper-custom' } } } });
-      await window.cue.settingsSet({ stt: { routes: { openai: { enabled: false } } } });
-      const afterPartialSttPatch = await window.cue.settingsGet();
+    const panel = await surface('panel'), toolbar = await surface('toolbar');
+    assert.notEqual(panel.id, toolbar.id);
+    assert.equal(await js(panel, `document.getElementById('messages').childElementCount`), 0);
+    assert.equal(await js(panel, `getComputedStyle(document.getElementById('toolbar')).display`), 'none');
+    assert.equal(await js(toolbar, `getComputedStyle(document.getElementById('panel-wrap')).display`), 'none');
+    assert.equal(await js(panel, `document.getElementById('screen-select').options.length`), screen.getAllDisplays().length);
+    const chosen = String(screen.getAllDisplays().at(-1).id);
+    await js(panel, `cue.displaySelect(${JSON.stringify(chosen)})`);
+    panel.setPosition(300, 100);
+    assert.equal((await js(panel, 'cue.displaysGet()')).selectedId, chosen, 'moving chat keeps selected screen');
+    await assert.rejects(js(panel, `cue.displaySelect('disconnected-fixture')`));
 
-      document.getElementById('more-btn').click();
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      document.getElementById('endpoint-trust').checked = false;
-      document.getElementById('endpoint-trust').dispatchEvent(new Event('change', { bubbles: true }));
-      document.getElementById('s-close').click();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const trustRevocationBlocked = !document.getElementById('settings-scrim').classList.contains('hidden')
-        && /confirm/i.test(document.getElementById('endpoint-note').textContent);
-      baseInput.value = 'http://fcevil.example/v1';
-      baseInput.dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('s-close').click();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const afterInvalid = await window.cue.settingsGet();
-      const smartToggle = document.getElementById('smart-toggle');
-      smartToggle.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const customTooltipWorks = !document.getElementById('custom-tooltip').classList.contains('hidden')
-        && /сильную модель/i.test(document.getElementById('custom-tooltip').textContent)
-        && document.getElementById('custom-tooltip').getBoundingClientRect().width > 100;
-      smartToggle.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }));
-      return {
-        missing,
-        emptyChatInitially,
-        mainWindowSimplified,
-        recoveryRedesigned,
-        resizersAvailable,
-        customControlsSkinned,
-        meetingIconVisible: !!document.querySelector('#search-btn svg path'),
-        sidecarsNonModal,
-        globalPanelsToggle,
-        panelButtonsToggle,
-        onboardingRussian,
-        catalogCardsSimplified,
-        invalidSettingsRemainVisible: !document.getElementById('settings-scrim').classList.contains('hidden'),
-        customSelected: providerSelect.value === 'compatible',
-        twoSettingsTabs: document.querySelectorAll('[data-settings-tab]').length === 2,
-        customPlaceholder: baseInput.placeholder,
-        authControlsVisible: !document.getElementById('auth-mode-row').classList.contains('hidden'),
-        singleConnectionVisible: !document.getElementById('analysis-provider-card').classList.contains('hidden'),
-        providerSetupSimplified,
-        invalidEndpointRejected: /https/i.test(document.getElementById('endpoint-note').textContent),
-        endpointHelperSeparated,
-        endpointHelperLocalized,
-        trustRevocationBlocked,
-        bridgeAvailable: !!(window.cue && window.cue.settingsGet && window.cue.settingsSet && window.cue.sessionDismiss),
-        validEndpointSaved: saved.provider === 'compatible'
-          && saved.baseUrls.compatible === 'http://localhost:11434/v1'
-          && saved.trustedBaseUrls.compatible === 'http://localhost:11434/v1'
-          && saved.authModes.compatible === 'bearer'
-          && saved.stt.provider === 'compatible'
-          && saved.apiKeys.compatible === 'shared-test-key'
-          && saved.sttApiKeys.compatible === 'shared-test-key'
-          && saved.stt.routes.compatible.enabled === true
-          && saved.stt.routes.compatible.baseUrl === 'http://localhost:11434/v1'
-          && saved.stt.routes.compatible.trustedBaseUrl === 'http://localhost:11434/v1'
-          && saved.stt.routes.compatible.model === 'local-stt-model'
-          && saved.stt.routes.openai.enabled === false
-          && saved.stt.routes.gemini.enabled === false
-          && saved.models.compatible.fast === 'local-model'
-          && saved.appearance.language === 'ru'
-          && saved.appearance.backgroundColor === '#243047'
-          && saved.appearance.accentColor === '#7c8cff'
-          && saved.appearance.backgroundOpacity === 0.64
-          && saved.appearance.blurStrength === 46
-          && saved.appearance.cornerRadius === 22
-          && saved.appearance.animations === false
-          && saved.appearance.textScale === 1.25
-          && saved.appearance.catalogWidth === 440
-          && saved.appearance.settingsWidth === 440,
-        appearanceApplied: document.documentElement.style.getPropertyValue('--glass-bg').includes('0.64')
-          && document.documentElement.style.getPropertyValue('--text-zoom') === '1.25'
-          && document.documentElement.style.getPropertyValue('--panel-width') === '624px'
-          && document.documentElement.style.getPropertyValue('--catalog-width') === '440px'
-          && document.documentElement.style.getPropertyValue('--settings-width') === '440px'
-          && document.documentElement.style.getPropertyValue('--accent') === '#7c8cff'
-          && document.documentElement.style.getPropertyValue('--glass-blur') === '46px'
-          && document.documentElement.style.getPropertyValue('--r-panel') === '22px'
-          && document.documentElement.dataset.animations === 'off',
-        sixThemesAvailable: document.querySelectorAll('#appearance-presets [data-preset]').length === 6,
-        quickLabelsRussian: document.querySelector('[data-mode="say"] span:last-child').textContent === 'Что ответить?'
-          && document.querySelector('[data-mode="followup"] span:last-child').textContent === 'Что спросить дальше?'
-          && document.querySelector('[data-mode="recap"] span:last-child').textContent === 'Краткое резюме',
-        toolbarActionsPolished: document.getElementById('copy-btn').parentElement.id === 'panel-tools'
-          && document.getElementById('logo-btn').parentElement.id === 'panel-tools-left'
-          && getComputedStyle(document.getElementById('panel-tools-left')).marginLeft === '0px'
-          && document.getElementById('logo-btn').getBoundingClientRect().left >= document.getElementById('panel').getBoundingClientRect().left
-          && getComputedStyle(document.getElementById('panel-topbar')).display === 'grid'
-          && getComputedStyle(document.getElementById('capture-diagnostics')).justifyContent === 'center'
-          && [...document.querySelectorAll('.diag-pill')].every((pill) => !!pill.dataset.tooltip)
-          && !/ожидание|STT|реплик/i.test(document.getElementById('capture-diagnostics').textContent)
-          && !document.getElementById('zoom-in-btn')
-          && !document.getElementById('zoom-out-btn')
-          && !!document.getElementById('smart-toggle').dataset.tooltip
-          && document.querySelectorAll('[title]').length === 0
-          && getComputedStyle(document.getElementById('custom-tooltip')).position === 'fixed'
-          && customTooltipWorks,
-        captureControlIdle: document.getElementById('stop-btn').getAttribute('aria-pressed') === 'false'
-          && document.getElementById('stop-btn').querySelector('svg path')
-          && document.getElementById('live-dot').classList.contains('off')
-          && document.getElementById('mic-activity').classList.contains('idle')
-          && document.querySelectorAll('#mic-activity .mic-wave i').length === 5
-          && !document.querySelector('#mic-activity .mic-activity-label')
-          && document.getElementById('hide-btn').children.length === 1
-          && !!document.querySelector('#hide-btn .panel-toggle-icon svg rect')
-          && document.getElementById('hide-btn').classList.contains('on')
-          && document.getElementById('hide-btn').getAttribute('aria-pressed') === 'true',
-        panelScrollEnabled: getComputedStyle(document.getElementById('panel-scroll')).overflowY === 'auto'
-          && getComputedStyle(document.getElementById('panel')).overflow === 'hidden'
-          && document.getElementById('composer-dock').parentElement.id === 'panel'
-          && document.getElementById('composer').parentElement.id === 'composer-dock'
-          && document.getElementById('action-row').parentElement.id === 'composer-dock'
-          && getComputedStyle(document.getElementById('action-row')).flexWrap === 'wrap'
-          && getComputedStyle(document.getElementById('action-row')).gap === '8px'
-          && getComputedStyle(document.querySelector('#action-row .act')).borderTopWidth === '1px'
-          && document.getElementById('appearance-text-scale-value').textContent === '20 px',
-        partialSttPatchPreserved: afterPartialSttPatch.stt.routes.openai.model === 'whisper-custom'
-          && afterPartialSttPatch.stt.routes.openai.enabled === false,
-        invalidEndpointFailedClosed: afterInvalid.baseUrls.compatible === 'http://localhost:11434/v1'
-      };
+    const turns = [
+      { id: 't1', channel: 'them', text: 'Как организуем работу над новой версией?', ts: 1000, endTs: 2500 },
+      { id: 't2', channel: 'them', text: 'Нужно проверить интерфейс и перенос окон между мониторами.', ts: 3000, endTs: 5000 },
+      { id: 't3', channel: 'you', text: 'Сначала проверим основные сценарии, затем подготовим демонстрацию.', ts: 7000, endTs: 10000 }
+    ];
+    panel.webContents.send('session:loaded', { transcript: turns });
+    await until(() => js(panel, `document.querySelectorAll('.transcript-row').length === 2`), 'grouped transcript');
+    panel.webContents.send('llm:start', { requestId: 'r1', userBubble: 'Предложи порядок проверки', requestedModel: 'model-alias', provider: 'fixture', mode: 'assist', append: true });
+    panel.webContents.send('llm:metadata', { requestId: 'r1', reportedModel: 'gpt-5.6-sol' });
+    panel.webContents.send('llm:token', { text: '**Начните с переноса окон.** Проверьте каждый монитор отдельно и перенос всей группы.\n\nЗатем проверьте расшифровку:\n- раскрытие до поля ввода;\n- сохранение позиции при прокрутке;\n- подписи говорящих при эхе.' });
+    panel.webContents.send('llm:done', {});
+    await until(() => js(panel, `document.querySelector('.ai-message')?.dataset.status === 'done'`), 'answer');
+    assert.equal(await js(panel, `document.querySelector('.answer-model').textContent`), 'gpt-5.6-sol');
+    assert.equal(await js(panel, `document.querySelector('.mode-badge').textContent`), 'Помощь');
+    assert.equal(await js(panel, `getComputedStyle(document.querySelector('.mode-badge')).textTransform`), 'none');
+    assert.equal(await js(panel, `getComputedStyle(document.querySelector('.user-bubble')).boxShadow`), 'none');
+    assert.equal(await js(panel, `getComputedStyle(document.querySelector('.user-bubble')).userSelect`), 'text');
+    assert.ok(await js(panel, `parseFloat(getComputedStyle(document.querySelector('.user-bubble')).fontSize) < parseFloat(getComputedStyle(document.querySelector('.ai-text')).fontSize)`));
+    images.push(await screenshot(panel, '01-compact'));
+    await js(panel, `document.getElementById('input').value='Мой черновик'; document.getElementById('input').dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('transcript-toggle').click()`);
+    assert.equal(await js(panel, `document.getElementById('transcript-toggle').getAttribute('aria-expanded')`), 'false');
+    images.push(await screenshot(panel, '02-collapsed'));
+    await js(panel, `document.getElementById('transcript-expand').click()`);
+    assert.equal(await js(panel, `document.getElementById('answer-view').hidden`), true);
+    assert.equal(await js(panel, `document.getElementById('input').value`), 'Мой черновик');
+    assert.ok(await js(panel, `document.getElementById('composer').getBoundingClientRect().bottom <= document.getElementById('panel').getBoundingClientRect().bottom`));
+    const longTurns = Array.from({ length: 80 }, (_, i) => ({ id: 'long-' + i, channel: i % 2 ? 'you' : 'them', text: 'Обсуждаем следующий этап проекта и фиксируем договорённости. '.repeat(3), ts: 20000 + i * 5000, endTs: 21000 + i * 5000 }));
+    panel.webContents.send('transcript:updated', { upserts: longTurns, removed: [] });
+    await wait(100);
+    await js(panel, `document.getElementById('live-transcript').scrollTop=0`);
+    await wait(100);
+    panel.webContents.send('transcript:updated', { upserts: [{ id: 'latest', channel: 'them', text: 'Последняя реплика без потери прокрутки.', ts: 500000 }], removed: [] });
+    await wait(100);
+    assert.equal(await js(panel, `document.getElementById('live-transcript').scrollTop`), 0);
+    images.push(await screenshot(panel, '03-expanded'));
+    const previousClipboard = clipboard.readText();
+    try {
+      await js(panel, `document.getElementById('copy-btn').click()`);
+      await until(() => clipboard.readText().includes('Предложи порядок проверки'), 'copy hidden chat');
+      assert.match(clipboard.readText(), /Последняя реплика/);
+    } finally { clipboard.writeText(previousClipboard); }
+    panel.webContents.send('llm:start', { requestId: 'auto', mode: 'auto', requestedModel: 'fixture', append: true });
+    panel.webContents.send('llm:done', { suppress: true });
+    await wait(100);
+    assert.equal(await js(panel, `document.querySelectorAll('.ai-message').length`), 1, 'suppressed auto removes the entire card');
+    assert.equal(await js(panel, `document.getElementById('chat-unread').classList.contains('hidden')`), true, 'suppressed auto has no unread badge');
+    panel.webContents.send('llm:start', { requestId: 'auto-visible', mode: 'auto', requestedModel: 'fixture', append: true });
+    panel.webContents.send('llm:token', { text: 'Проверьте микрофон.' });
+    panel.webContents.send('llm:done', {});
+    await wait(80);
+    assert.equal(await js(panel, `document.getElementById('panel').dataset.transcriptState`), 'full', 'automatic answer preserves reading');
+    assert.equal(await js(panel, `document.getElementById('chat-unread').classList.contains('hidden')`), false);
+    await js(panel, `document.getElementById('live-transcript').scrollTop=180`);
+    await wait(80);
+    await js(panel, `document.getElementById('transcript-toggle').click()`);
+    panel.webContents.send('transcript:updated', { upserts: [{ id: 'collapsed-new', channel: 'you', text: 'Новая реплика при свёрнутом блоке.', ts: 510000 }], removed: [] });
+    await wait(80);
+    await js(panel, `document.getElementById('transcript-toggle').click()`);
+    await wait(80);
+    assert.equal(await js(panel, `document.getElementById('live-transcript').scrollTop`), 180, 'collapsed updates preserve the reading position');
+    await js(panel, `document.getElementById('transcript-expand').click()`);
+    panel.webContents.send('llm:start', { requestId: 'shortcut', mode: 'assist', requestedModel: 'fixture', append: true });
+    panel.webContents.send('llm:done', { suppress: true });
+    await wait(80);
+    assert.equal(await js(panel, `document.getElementById('panel').dataset.transcriptState`), 'compact', 'manual shortcut returns to chat');
+    await js(panel, `document.getElementById('transcript-toggle').focus()`);
+    panel.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Space' });
+    panel.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Space' });
+    await until(() => js(panel, `document.getElementById('panel').dataset.transcriptState === 'collapsed'`), 'keyboard accordion');
+
+    await js(panel, `cue.windowOpen('settings')`);
+    const settings = await surface('settings');
+    assert.ok(settings.isVisible());
+    const providerChecks = await js(settings, `(async () => {
+      const el = id => document.getElementById(id);
+      el('provider-select').value='compatible'; el('provider-select').dispatchEvent(new Event('change',{bubbles:true}));
+      el('base-url').value='http://localhost:11434/v1'; el('base-url').dispatchEvent(new Event('input',{bubbles:true}));
+      el('model-fast').value='fixture-model'; el('stt-model').value='fixture-stt'; el('provider-api-key').value='fixture-key';
+      el('s-close').click(); await new Promise(r=>setTimeout(r,150));
+      const untrustedBlocked=!el('settings-scrim').classList.contains('hidden');
+      el('endpoint-trust').checked=true; el('endpoint-trust').dispatchEvent(new Event('change',{bubbles:true}));
+      el('appearance-text-scale').value='20'; el('appearance-text-scale').dispatchEvent(new Event('input',{bubbles:true}));
+      el('s-close').click(); await new Promise(r=>setTimeout(r,150));
+      const saved=await cue.settingsGet();
+      return { untrustedBlocked, saved:saved.baseUrls.compatible, trusted:saved.trustedBaseUrls.compatible,
+        model:saved.models.compatible.fast, sharedKey:saved.sttApiKeys.compatible===saved.apiKeys.compatible,
+        tabs:document.querySelectorAll('[data-settings-tab]').length, closed:el('settings-scrim').classList.contains('hidden'),
+        customControls:document.querySelectorAll('.custom-select').length>=3,
+        themes:document.querySelectorAll('[data-preset]').length };
     })()`);
-
-    const ok = result.missing.length === 0
-      && result.emptyChatInitially
-      && result.mainWindowSimplified
-      && result.recoveryRedesigned
-      && result.resizersAvailable
-      && result.customControlsSkinned
-      && result.meetingIconVisible
-      && result.sidecarsNonModal
-      && result.globalPanelsToggle
-      && result.panelButtonsToggle
-      && result.onboardingRussian
-      && result.catalogCardsSimplified
-      && result.invalidSettingsRemainVisible
-      && result.customSelected
-      && result.twoSettingsTabs
-      && result.authControlsVisible
-      && result.singleConnectionVisible
-      && result.providerSetupSimplified
-      && result.invalidEndpointRejected
-      && result.endpointHelperSeparated
-      && result.endpointHelperLocalized
-      && result.trustRevocationBlocked
-      && result.bridgeAvailable
-      && result.validEndpointSaved
-      && result.appearanceApplied
-      && result.sixThemesAvailable
-      && result.quickLabelsRussian
-      && result.toolbarActionsPolished
-      && result.captureControlIdle
-      && result.panelScrollEnabled
-      && result.partialSttPatchPreserved
-      && result.invalidEndpointFailedClosed;
-    console.log(JSON.stringify(result));
-    app.exit(ok ? 0 : 1);
-  } catch (error) {
-    console.error(error && error.stack ? error.stack : error);
-    app.exit(1);
-  }
+    assert.deepEqual(providerChecks, { untrustedBlocked: true, saved:'http://localhost:11434/v1', trusted:'http://localhost:11434/v1', model:'fixture-model', sharedKey:true, tabs:2, closed:true, customControls:true, themes:6 });
+    await until(() => !settings.isVisible(), 'settings native close');
+    await until(() => js(panel, `document.documentElement.style.getPropertyValue('--text-zoom') === '1.25'`), 'shared appearance');
+    await js(panel, `cue.windowOpen('settings')`); await wait(150);
+    await js(settings, `document.getElementById('endpoint-trust').checked=false; document.getElementById('endpoint-trust').dispatchEvent(new Event('change',{bubbles:true})); document.getElementById('s-close').click()`);
+    await wait(150); assert.ok(settings.isVisible(), 'revoked trust keeps settings open');
+    await js(settings, `document.getElementById('base-url').value='http://remote.invalid/v1'; document.getElementById('base-url').dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('s-close').click()`);
+    await wait(150);
+    assert.equal((await js(panel, 'cue.settingsGet()')).baseUrls.compatible, 'http://localhost:11434/v1', 'invalid endpoint cannot replace saved route');
+    images.push(await screenshot(settings, '04-settings-validation'));
+    await js(panel, `cue.windowOpen('catalog')`);
+    const catalog = await surface('catalog');
+    assert.equal(await js(catalog, `document.querySelectorAll('.catalog-item').length`), 1);
+    assert.equal(await js(catalog, `[...document.querySelectorAll('.catalog-action')].map(el=>el.textContent).join(' ')`), 'Открыть DOCX PDF');
+    await js(panel, `cue.windowOpen('onboard')`);
+    const onboard = await surface('onboard');
+    assert.equal(await js(onboard, `document.getElementById('ob-title').textContent`), 'Добро пожаловать в Cue');
+    await js(toolbar, 'cue.workspaceToggle()'); await wait(100);
+    assert.ok(toolbar.isVisible());
+    assert.ok([panel, settings, catalog, onboard].every(w=>!w.isVisible()));
+    await js(toolbar, 'cue.workspaceToggle()'); await wait(100);
+    assert.ok([panel, settings, catalog, onboard].every(w=>w.isVisible()));
+    console.log(JSON.stringify({ pass:true, checks:['native surfaces','screen selection','grouped transcript','three states','keyboard','draft','scroll retention','hidden text copy','model metadata','compact messages','silent auto','provider trust','shared appearance','catalog','onboarding','workspace visibility'], images }));
+    app.emit('will-quit'); app.exit(0);
+  } catch (error) { console.error(error.stack); app.emit('will-quit'); app.exit(1); }
 });
-
-setTimeout(() => {
-  console.error('UI smoke test timed out.');
-  app.exit(1);
-}, 15000).unref();
+setTimeout(()=>{ console.error('UI test timeout'); app.exit(1); }, 45000).unref();

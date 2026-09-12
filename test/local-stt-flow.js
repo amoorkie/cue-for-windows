@@ -59,31 +59,33 @@ server.listen(0, '127.0.0.1', async () => {
   require('../main');
   try {
     await app.whenReady();
-    const win = await until(() => BrowserWindow.getAllWindows().find((w) => !w.webContents.isLoading()), 'window');
+    const win = await until(() => BrowserWindow.getAllWindows().find((w) => w.cueSurface === 'panel' && !w.webContents.isLoading()), 'window');
     const js = (code) => win.webContents.executeJavaScript(code);
     await until(() => js(`!!window.cue && document.querySelector('[data-mode="say"]').textContent.includes('Что ответить?')`), 'renderer ready');
     await js(`window.flowEvents=[];
-      for(const type of ['transcript','llm:done','llm:error','capture:state','status']) cue.on(type,data=>flowEvents.push({type,...data}));
+      for(const type of ['transcript:updated','llm:done','llm:error','capture:state','status']) cue.on(type,data=>flowEvents.push({type,...data}));
       navigator.mediaDevices.getUserMedia=async()=>{throw new Error('Fixture: microphone disabled');};
       navigator.mediaDevices.getDisplayMedia=async()=>{throw new Error('Fixture: system capture disabled');}; true;`);
 
     // Configure local mode through the visible settings, including save without an STT API model.
-    await js(`document.getElementById('more-btn').click();`);
-    const fields = await js(`({ mode:document.getElementById('stt-mode').value,
+    await js(`cue.windowOpen('settings')`);
+    const settingsWindow = await require('./electron-helpers').surface('settings');
+    const settingsJs = code => settingsWindow.webContents.executeJavaScript(code);
+    const fields = await settingsJs(`({ mode:document.getElementById('stt-mode').value,
       visible:!document.getElementById('local-stt-fields').classList.contains('hidden'),
       cloudHidden:document.getElementById('stt-model-field').classList.contains('hidden') })`);
     assert.deepEqual(fields, { mode: 'local', visible: true, cloudHidden: true });
     await wait(300);
     fs.mkdirSync(path.join(root, 'qa'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'qa', 'settings.png'), (await win.webContents.capturePage()).toPNG());
-    await js(`document.getElementById('stt-model').value=''; document.getElementById('s-close').click();`);
-    await until(() => js(`document.getElementById('settings-scrim').classList.contains('hidden')`), 'save settings');
+    fs.writeFileSync(path.join(root, 'qa', 'settings.png'), (await settingsWindow.webContents.capturePage()).toPNG());
+    await settingsJs(`document.getElementById('stt-model').value=''; document.getElementById('s-close').click();`);
+    await until(() => settingsJs(`document.getElementById('settings-scrim').classList.contains('hidden')`), 'save settings');
     assert.equal((await js('cue.settingsGet()')).stt.mode, 'local');
     await js('cue.captureToggle()');
     const first = pcmFromWave(path.join(root, 'probe.wav'));
     const second = pcmFromWave(path.join(root, 'reply.wav'));
     await js(`cue.systemPcm(Uint8Array.from(atob(${JSON.stringify(first.toString('base64'))}),c=>c.charCodeAt(0)).buffer);`);
-    await until(() => js(`flowEvents.some(e=>e.type==='transcript' && e.channel==='them')`), 'live system transcript');
+    await until(() => js(`flowEvents.some(e=>e.type==='transcript:updated' && e.upserts.some(t=>t.channel==='them'))`), 'live system transcript');
     assert.ok(await js(`getComputedStyle(document.getElementById('live-transcript')).display !== 'none'`));
     const blocked = await js(`cue.settingsSet({stt:{mode:'api'}}).then(()=>false,()=>true)`);
     assert.equal(blocked, true, 'cannot switch STT during capture');
@@ -104,7 +106,7 @@ server.listen(0, '127.0.0.1', async () => {
     await until(() => js(`flowEvents.some(e=>e.type==='llm:done' && e.recapFile)`), 'saved final recap');
     const events = await js('flowEvents');
     assert.equal(events.filter((e) => e.type === 'llm:error').length, 0);
-    const turns = events.filter((e) => e.type === 'transcript');
+    const turns = events.filter((e) => e.type === 'transcript:updated').flatMap(e=>e.upserts);
     assert.deepEqual([...new Set(turns.map((turn) => turn.channel))].sort(), ['them', 'you']);
     assert.match(JSON.stringify(requests.at(-1)), /пятниц/);
     assert.match(requests.at(-1).messages.at(-1).content, /Full transcript/);
@@ -114,7 +116,7 @@ server.listen(0, '127.0.0.1', async () => {
     const saved = JSON.parse(fs.readFileSync(path.join(stateDir, 'cue-data.json'), 'utf8'));
     assert.equal(saved.stt.mode, 'local');
     assert.ok(Object.values(saved.stt.routes).every((route) => !route.enabled));
-    fs.writeFileSync(path.join(root, 'qa', 'live.png'), (await win.webContents.capturePage()).toPNG());
+    fs.writeFileSync(path.join(root, 'qa', 'live.png'), (await settingsWindow.webContents.capturePage()).toPNG());
     console.log(JSON.stringify({ pass: true, realGigaAM: true, audioChannels: turns.map((t) => t.channel), chatRequests: requests.length,
       historyPassed: true, stopDrainAndRecap: true, cloudAudioRequests: 0, stateDir }));
     // Avoid leaving Python running when this test uses app.exit rather than normal quit.

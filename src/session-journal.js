@@ -69,6 +69,16 @@ class SessionJournal {
     await this.persist();
   }
 
+  async recordRecognition(sourceTranscript, transcript, revision) {
+    if (!this.data || !this.filePath) throw new Error('No active session journal.');
+    this.data.version = 2;
+    this.data.sourceTranscript = sourceTranscript.map(turn => ({ ...turn }));
+    this.data.transcript = transcript.map(turn => ({ ...turn }));
+    this.data.transcriptRevision = revision;
+    this.data.updatedAt = new Date().toISOString();
+    await this.persist();
+  }
+
   async appendError(error, area = 'stt') {
     const entry = { ...safeError(error), area };
     await fs.mkdir(this.outputDirectory, { recursive: true });
