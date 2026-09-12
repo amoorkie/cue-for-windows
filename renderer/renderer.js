@@ -1695,12 +1695,16 @@
     const ru = currentLanguage() === 'ru';
     $('#screen-label').textContent = ru ? 'Экран для ИИ' : 'AI screen';
     if (!data.displays.some(d => d.id === data.selectedId)) {
-      const missing = new Option(ru ? 'Монитор отключён — выберите' : 'Display disconnected — select', data.selectedId);
+      const missing = new Option(ru ? 'Нет экрана' : 'Unavailable', data.selectedId);
       missing.disabled = true; select.add(missing);
     }
-    data.displays.forEach((d, i) => select.add(new Option(`${ru ? 'Экран' : 'Screen'} ${i + 1} · ${d.width} × ${d.height}`, d.id)));
+    data.displays.forEach((d, i) => select.add(new Option(`${ru ? 'Экран' : 'Screen'} ${i + 1}`, d.id)));
     select.value = data.selectedId;
-    select.title = ru ? 'Экран для анализа ИИ. Перемещение Cue не меняет выбор.' : 'Screen used for AI analysis. Moving Cue does not change it.';
+    const selected = data.displays.find(d => d.id === data.selectedId);
+    select.setAttribute('aria-invalid', String(!selected));
+    const description = selected ? `${selected.label || select.selectedOptions[0].textContent} · ${selected.width} × ${selected.height}. `
+      : (ru ? 'Выбранный монитор отключён. Выберите другой экран. ' : 'The selected display is disconnected. Choose another screen. ');
+    select.title = description + (ru ? 'Экран для анализа ИИ. Перемещение Cue не меняет выбор.' : 'Screen used for AI analysis. Moving Cue does not change it.');
   }
   $('#screen-select').addEventListener('change', async event => {
     try { await cue.displaySelect(event.target.value); }

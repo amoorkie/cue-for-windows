@@ -9,6 +9,7 @@ window.CueTranscriptView = class {
     this.follow = true;
     this.scrollTop = 0;
     this.$ = id => document.getElementById(id);
+    this.$('transcript-toggle').querySelector('.transcript-chevron').innerHTML = window.ICONS.icon('chevron-down', { size: 14 });
     this.$('transcript-toggle').addEventListener('click', () => this.setState(this.state === 'collapsed' ? 'compact' : 'collapsed'));
     this.$('transcript-expand').addEventListener('click', () => this.setState(this.state === 'full' ? 'compact' : 'full'));
     this.$('transcript-unread').addEventListener('click', () => { this.setState('compact'); this.latest(); });
@@ -32,7 +33,6 @@ window.CueTranscriptView = class {
     this.$('transcript-toggle').setAttribute('aria-expanded', String(!collapsed));
     this.$('transcript-expand').setAttribute('aria-pressed', String(state === 'full'));
     this.$('live-transcript').hidden = collapsed;
-    this.$('capture-diagnostics').hidden = collapsed;
     this.$('answer-view').hidden = state === 'full';
     if (state !== 'full') this.$('chat-unread').classList.add('hidden');
     if (!collapsed && this.follow) this.latest();
@@ -45,7 +45,8 @@ window.CueTranscriptView = class {
   labels() {
     const ru = this.language() === 'ru';
     this.$('transcript-title').textContent = ru ? 'Расшифровка' : 'Transcript';
-    this.$('transcript-state-label').textContent = this.recording ? (ru ? 'Запись' : 'Recording') : (ru ? 'Сохранённый текст' : 'Saved text');
+    this.$('transcript-state-label').textContent = ru ? 'Запись' : 'Recording';
+    this.$('transcript-state-label').hidden = !this.recording;
     this.$('transcript-expand').setAttribute('aria-label', this.state === 'full'
       ? (ru ? 'Вернуться к чату' : 'Return to chat') : (ru ? 'Развернуть расшифровку до поля ввода' : 'Expand transcript to the composer'));
     this.$('transcript-expand').innerHTML = window.ICONS.icon(this.state === 'full' ? 'minimize-2' : 'maximize-2', { size: 14 });

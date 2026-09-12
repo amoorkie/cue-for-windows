@@ -49,8 +49,23 @@ app.whenReady().then(async () => {
     assert.equal(await js(panel, `getComputedStyle(document.querySelector('.user-bubble')).userSelect`), 'text');
     assert.ok(await js(panel, `parseFloat(getComputedStyle(document.querySelector('.user-bubble')).fontSize) < parseFloat(getComputedStyle(document.querySelector('.ai-text')).fontSize)`));
     images.push(await screenshot(panel, '01-compact'));
+    const diagnosticsFit = () => js(panel, `(() => {
+      const header=document.getElementById('panel-topbar').getBoundingClientRect();
+      return [...document.querySelectorAll('#capture-diagnostics .diag-pill, #screen-select')].every(el=>{
+        const r=el.getBoundingClientRect();
+        return r.width>0 && r.height>0 && r.left>=header.left && r.right<=header.right && r.top>=header.top && r.bottom<=header.bottom;
+      });
+    })()`);
+    assert.equal(await diagnosticsFit(), true, 'diagnostics and screen choice fit in the header');
+    const fullBounds = panel.getBounds();
+    panel.setBounds({ ...fullBounds, width: 568, height: 650 });
+    await until(() => js(panel, 'window.innerWidth === 568'), 'minimum width applied to the renderer');
+    assert.equal(await diagnosticsFit(), true, 'diagnostics stay visible at minimum panel width');
+    images.push(await screenshot(panel, '01-narrow'));
+    panel.setBounds(fullBounds); await wait(100);
     await js(panel, `document.getElementById('input').value='Мой черновик'; document.getElementById('input').dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('transcript-toggle').click()`);
     assert.equal(await js(panel, `document.getElementById('transcript-toggle').getAttribute('aria-expanded')`), 'false');
+    assert.equal(await diagnosticsFit(), true, 'collapsing the transcript keeps all diagnostics visible');
     images.push(await screenshot(panel, '02-collapsed'));
     await js(panel, `document.getElementById('transcript-expand').click()`);
     assert.equal(await js(panel, `document.getElementById('answer-view').hidden`), true);
