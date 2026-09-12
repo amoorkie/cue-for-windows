@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('cue', {
   platform: process.platform,
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (patch) => ipcRenderer.invoke('settings:set', patch),
+  localSttCheck: (config) => ipcRenderer.invoke('local-stt:check', config),
+  localSttFolder: () => ipcRenderer.invoke('local-stt:folder'),
+  localSttSetup: () => ipcRenderer.invoke('local-stt:setup'),
   ask: (payload) => ipcRenderer.send('ask', payload),
   assistToggle: () => ipcRenderer.invoke('assist:toggle'),
   captureToggle: () => ipcRenderer.invoke('capture:toggle'),
@@ -27,7 +30,7 @@ contextBridge.exposeInMainWorld('cue', {
   openPane: (url) => ipcRenderer.send('open-pane', url),
   log: (msg) => ipcRenderer.send('log', msg),
   on: (channel, cb) => {
-    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'settings:open', 'diagnostics', 'recovery:available', 'session:loaded'];
+    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'settings:open', 'diagnostics', 'recovery:available', 'session:loaded', 'local-stt:progress'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, data) => cb(data));
   }

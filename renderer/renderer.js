@@ -6,6 +6,8 @@
   const cmdKey = cue.platform === 'darwin' ? '⌘' : 'Ctrl';
   const isCmdOrCtrl = (e) => cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
 
+  let panelBehavior = null;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const customControls = [];
   function closeCustomPopovers(except) {
     document.querySelectorAll('.custom-select.open, .color-control.open').forEach((control) => {
@@ -49,6 +51,7 @@
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', String(option.value === select.value));
         item.textContent = option.textContent;
+        item.disabled = option.disabled;
         if (option.value === select.value) item.classList.add('selected');
         item.addEventListener('click', () => {
           select.value = option.value;
@@ -131,6 +134,15 @@
   }
 
   document.querySelectorAll('select').forEach(upgradeSelect);
+  const sttModeOptions = [...document.querySelectorAll('input[name="stt-mode"]')];
+  sttModeOptions.forEach((option) => option.addEventListener('change', () => {
+    if (!option.checked) return;
+    $('#stt-mode').value = option.value;
+    $('#stt-mode').dispatchEvent(new Event('change', { bubbles: true }));
+  }));
+  customControls.push(() => sttModeOptions.forEach((option) => {
+    option.checked = option.value === $('#stt-mode').value;
+  }));
   document.querySelectorAll('input[type="color"]').forEach(upgradeColorInput);
   document.querySelectorAll('input[type="range"]').forEach((input) => {
     const sync = () => {
@@ -230,32 +242,36 @@
 
   const UI_TEXT = {
     en: {
-      hide: 'Hide', assist: 'Assist', say: 'What should I say?', followup: 'Follow-up questions', recap: 'Recap', smart: 'Smart', copy: 'Copy messages',
+      hide: 'Hide', assist: 'Assist', autoAssist: 'Auto assist', say: 'What should I say?', followup: 'Follow-up questions', recap: 'Recap', smart: 'Smart', copy: 'Copy messages',
+      emptyConversation: 'Send a message to get started',
       settings: 'Settings', done: 'Done', provider: 'Provider', providerTab: 'Provider', interfaceTab: 'Interface', apiKey: 'API key', apiEndpoint: 'API endpoint', officialHint: 'leave blank for the official API', endpoint: 'Endpoint', advanced: 'Advanced',
-      providerIntro: 'Enter the connection once. The same provider, API key and endpoint power transcription and analysis.', unifiedService: 'AI provider', unifiedServiceHint: 'Used for both meeting transcription and analysis', allInputs: 'Audio + text + screen',
+      providerIntro: 'Choose how to transcribe speech. Your AI provider handles chat, suggested replies and meeting analysis.', unifiedService: 'AI provider', unifiedServiceHint: 'Chat, suggested replies and meeting analysis', allInputs: 'Text + screen',
+      sttApi: 'Via API', sttLocal: 'Local GigaAM', localSttHint: 'Audio is recognized on this PC. Conversation text is used in chat and final analysis via API.', modelFolder: 'Model folder', chooseFolder: 'Choose folder', checkModel: 'Check', installGigaam: 'Install GigaAM · 900 MB',
       baseUrl: 'Base URL', trustApi: 'I trust this destination for the API key, audio, text and screenshots', sendBearer: 'Send API key as a Bearer token',
       endpointRequired: 'A Base URL is required for the Custom provider.', officialEndpoint: 'Official endpoint: {endpoint}', customEndpoint: 'Custom endpoint: your API key, audio, prompts and screenshots can be sent to {host}.',
       bearerTooltip: 'Enable this when the endpoint expects the API key in the Authorization: Bearer header. Disable it only for a local or custom service that explicitly works without authorization.', trustTooltip: 'Confirms that you allow Cue to send your API key and meeting data to this custom address.',
       apiKeys: 'API keys', storedLocally: 'stored locally in cue-data.json', models: 'Models', modelHint: 'fast = Smart off · smart = Smart on',
-      fastModel: 'Fast', smartModel: 'Smart', transcription: 'Transcription route', separateFromChat: 'separate from chat',
+      fastModel: 'Fast', smartModel: 'Smart', transcription: 'Transcription', separateFromChat: 'separate from chat',
       useForSpeech: 'Use this provider for speech-to-text', sttKey: 'STT key', sendSttBearer: 'Send STT key as a Bearer token',
       sttModel: 'STT model', sttUrl: 'STT URL', sttProtocol: 'STT protocol', trustAudio: 'I trust this destination for API keys and audio', appearance: 'Appearance',
-      language: 'Language', windowDrag: 'Drag the Cue window', backgroundColor: 'Background', accentColor: 'Accent', opacity: 'Opacity', textSize: 'Text size', blurStrength: 'Blur', cornerRadius: 'Corners', animations: 'Interface animations', themes: 'Themes', themeGraphite: 'Graphite', themeMidnight: 'Midnight', themeObsidian: 'Obsidian', themeArctic: 'Arctic', themeForest: 'Forest', themeWine: 'Wine', glassAppearance: 'Glass appearance', layout: 'Layout', behavior: 'Behavior', resetAppearance: 'Reset appearance',
+      language: 'Language', windowDrag: 'Drag Cue panels', dragHint: 'Drag panels by their headers, or the toolbar by its center.', resetPositions: 'Reset panel positions', motionHint: 'Smooth opening, closing and tab changes.', motionReduced: 'Motion is reduced by your system accessibility setting.', backgroundColor: 'Background', accentColor: 'Accent', opacity: 'Opacity', textSize: 'Text size', blurStrength: 'Blur', cornerRadius: 'Corners', animations: 'Interface animations', themes: 'Themes', themeGraphite: 'Graphite', themeMidnight: 'Midnight', themeObsidian: 'Obsidian', themeArctic: 'Arctic', themeForest: 'Forest', themeWine: 'Wine', glassAppearance: 'Glass appearance', layout: 'Layout', behavior: 'Behavior', resetAppearance: 'Reset appearance',
       placeholder: 'Ask about your screen or conversation, or {key} {enter} for Assist', example: '“A discounted cash flow model values a company by projecting future free cash flows and discounting them to present value using the weighted average cost of capital.”',
       active: 'Active', customApi: 'custom API', officialApi: 'official API', apiNotSet: 'API not set', keys: 'keys', stt: 'STT', liveTranscript: 'Live transcript', hints: 'Cue hints', ready: 'Ready', listening: 'Listening', generating: 'Generating', error: 'Error'
     },
     ru: {
-      hide: 'Скрыть', assist: 'Помоги', say: 'Что ответить?', followup: 'Что спросить дальше?', recap: 'Краткое резюме', smart: 'Умный режим', copy: 'Скопировать сообщения',
+      hide: 'Скрыть', assist: 'Помоги', autoAssist: 'Автопомощь', say: 'Что ответить?', followup: 'Что спросить дальше?', recap: 'Краткое резюме', smart: 'Умный режим', copy: 'Скопировать сообщения',
+      emptyConversation: 'Отправьте сообщение, чтобы начать',
       settings: 'Настройки', done: 'Готово', provider: 'Провайдер', providerTab: 'Провайдер', interfaceTab: 'Интерфейс', apiKey: 'API-ключ', apiEndpoint: 'API endpoint', officialHint: 'пусто — официальный API', endpoint: 'Эндпоинт', advanced: 'Дополнительно',
-      providerIntro: 'Введите подключение один раз. Один провайдер, API-ключ и эндпоинт используются для расшифровки и анализа.', unifiedService: 'ИИ-провайдер', unifiedServiceHint: 'Одновременно расшифровывает встречу и анализирует её', allInputs: 'Аудио + текст + экран',
+      providerIntro: 'Выберите способ расшифровки речи. ИИ-провайдер отвечает за чат, подсказки и итоговый анализ встречи.', unifiedService: 'ИИ-провайдер', unifiedServiceHint: 'Чат, подсказки и итоговый анализ встречи', allInputs: 'Текст + экран',
+      sttApi: 'Через API', sttLocal: 'Локальная GigaAM', localSttHint: 'Аудио распознаётся на этом ПК. Текст разговора используется в чате и итоговом анализе через API.', modelFolder: 'Папка модели', chooseFolder: 'Выбрать папку', checkModel: 'Проверить', installGigaam: 'Установить GigaAM · 900 МБ',
       baseUrl: 'Базовый URL', trustApi: 'Я доверяю этому адресу для отправки API-ключа, аудио, текста и снимков экрана', sendBearer: 'Отправлять API-ключ как Bearer-токен',
       endpointRequired: 'Для провайдера Custom нужно указать базовый URL.', officialEndpoint: 'Официальный эндпоинт: {endpoint}', customEndpoint: 'Пользовательский эндпоинт: API-ключ, аудио, запросы и снимки экрана могут отправляться на {host}.',
       bearerTooltip: 'Включите, если сервис ожидает API-ключ в заголовке Authorization: Bearer. Отключайте только для локального или собственного сервиса, который явно работает без авторизации.', trustTooltip: 'Подтверждает, что Cue может отправлять API-ключ и данные встречи на этот пользовательский адрес.',
       apiKeys: 'API-ключи', storedLocally: 'хранятся локально в cue-data.json', models: 'Модели', modelHint: 'быстрый = Smart выкл. · умный = Smart вкл.',
-      fastModel: 'Быстрая', smartModel: 'Умная', transcription: 'Маршрут расшифровки', separateFromChat: 'отдельно от чата',
+      fastModel: 'Быстрая', smartModel: 'Умная', transcription: 'Расшифровка', separateFromChat: 'отдельно от чата',
       useForSpeech: 'Использовать провайдер для распознавания речи', sttKey: 'Ключ STT', sendSttBearer: 'Отправлять STT-ключ как Bearer-токен',
       sttModel: 'Модель STT', sttUrl: 'URL STT', sttProtocol: 'Протокол STT', trustAudio: 'Я доверяю этому адресу для API-ключа и аудио', appearance: 'Внешний вид',
-      language: 'Язык интерфейса', windowDrag: 'Перетаскивать окно Cue', backgroundColor: 'Фон', accentColor: 'Акцент', opacity: 'Прозрачность', textSize: 'Размер текста', blurStrength: 'Размытие', cornerRadius: 'Скругление', animations: 'Анимации интерфейса', themes: 'Готовые темы', themeGraphite: 'Графит', themeMidnight: 'Полночь', themeObsidian: 'Обсидиан', themeArctic: 'Арктика', themeForest: 'Лес', themeWine: 'Вино', glassAppearance: 'Стекло и цвета', layout: 'Размер текста', behavior: 'Поведение', resetAppearance: 'Сбросить оформление',
+      language: 'Язык интерфейса', windowDrag: 'Перетаскивать панели Cue', dragHint: 'Тяните за заголовок панели, а верхнюю панель — за её середину.', resetPositions: 'Сбросить расположение панелей', motionHint: 'Плавное открытие, закрытие и переключение вкладок.', motionReduced: 'Анимации отключены системной настройкой уменьшения движения.', backgroundColor: 'Фон', accentColor: 'Акцент', opacity: 'Прозрачность', textSize: 'Размер текста', blurStrength: 'Размытие', cornerRadius: 'Скругление', animations: 'Анимации интерфейса', themes: 'Готовые темы', themeGraphite: 'Графит', themeMidnight: 'Полночь', themeObsidian: 'Обсидиан', themeArctic: 'Арктика', themeForest: 'Лес', themeWine: 'Вино', glassAppearance: 'Стекло и цвета', layout: 'Размер текста', behavior: 'Поведение', resetAppearance: 'Сбросить оформление',
       placeholder: 'Спроси про экран или разговор, или нажми {key} {enter} для помощи', example: '«Модель дисконтированных денежных потоков оценивает компанию через прогноз свободного денежного потока и приведение его к текущей стоимости по WACC.»',
       active: 'Активен', customApi: 'кастомный API', officialApi: 'официальный API', apiNotSet: 'API не задан', keys: 'ключи', stt: 'STT', liveTranscript: 'Живой конспект', hints: 'Подсказки', ready: 'Готово', listening: 'Слушаю', generating: 'Генерирую', error: 'Ошибка'
     }
@@ -354,7 +370,9 @@
     document.documentElement.style.setProperty('--panel-offset-y', `${appearance.panelOffsetY || 0}px`);
     document.documentElement.style.setProperty('--catalog-top', `${appearance.catalogTop ?? 14}px`);
     document.documentElement.style.setProperty('--settings-top', `${appearance.settingsTop ?? 14}px`);
-    document.documentElement.dataset.animations = appearance.animations === false ? 'off' : 'on';
+    document.documentElement.dataset.animations = appearance.animations === false || reducedMotion.matches ? 'off' : 'on';
+    $('#motion-hint').textContent = t(reducedMotion.matches && appearance.animations !== false ? 'motionReduced' : 'motionHint');
+    panelBehavior?.refresh();
     $('#app').classList.toggle('drag-enabled', appearance.windowDrag !== false);
     const opacityInput = $('#appearance-opacity');
     const opacityValue = $('#appearance-opacity-value');
@@ -450,6 +468,7 @@
     const atBottom = liveTranscript.scrollHeight - liveTranscript.scrollTop - liveTranscript.clientHeight < 24;
     const row = document.createElement('div');
     row.className = 'transcript-row ' + (turn.channel === 'them' ? 'them' : 'you');
+    row.dataset.ts = String(turn.ts || Date.now());
     const meta = document.createElement('div');
     meta.className = 'transcript-meta';
     const speaker = document.createElement('span');
@@ -466,7 +485,8 @@
     text.className = 'transcript-text';
     text.textContent = turn.text;
     row.append(meta, text);
-    liveTranscript.appendChild(row);
+    const later = [...liveTranscript.children].find((item) => Number(item.dataset.ts) > Number(row.dataset.ts));
+    liveTranscript.insertBefore(row, later || null);
     transcriptCount += 1;
     transcriptCountEl.textContent = currentLanguage() === 'ru' ? `Текст ${transcriptCount}` : `Text ${transcriptCount}`;
     transcriptCountEl.className = 'diag-pill ok';
@@ -520,19 +540,21 @@
     cue.ask({ mode, text: text || '' });
   }
 
-  const assistBtn = document.querySelector('.act[data-mode="assist"]');
+  const assistBtn = $('#auto-assist-btn');
   function syncAssistMode(active) {
     assistBtn.classList.toggle('active', !!active);
     assistBtn.setAttribute('aria-pressed', String(!!active));
   }
-  document.querySelectorAll('.act').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (btn.dataset.mode === 'assist') {
-        const active = await cue.assistToggle();
-        syncAssistMode(active);
-        return;
-      }
-      runMode(btn.dataset.mode, '');
+  assistBtn.addEventListener('click', async () => {
+    try { syncAssistMode(await cue.assistToggle()); }
+    catch (error) { showStatus(mediaErrorDetail(error)); }
+  });
+  document.querySelectorAll('.act[data-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (busy) return;
+      const text = input.value.trim();
+      input.value = ''; syncPlaceholder();
+      runMode(btn.dataset.mode, text);
     });
   });
 
@@ -551,6 +573,7 @@
   $('#input-area').addEventListener('click', () => input.focus());
 
   function send() {
+    if (busy) return;
     const text = input.value.trim();
     if (!text) { runMode('assist', ''); return; }
     input.value = ''; syncPlaceholder();
@@ -708,6 +731,8 @@
       await cue.captureToggle();
     } catch (err) {
       captureWanted = !turningOn;
+      if (turningOn) { stopMic(); stopSystemAudio(); }
+      else if (captureWanted) { void startMic(); void startSystemAudio(); }
       showCaptureError('Listening', err);
     } finally {
       captureTogglePending = false;
@@ -920,7 +945,7 @@
   });
   cue.on('llm:start', ({ userBubble, small, append, responseLabel }) => {
     if (!append) clearMessages();
-    if (userBubble && !append) addUserBubble(userBubble);
+    if (userBubble) addUserBubble(userBubble);
     startAi(!!small, append ? responseLabel : '');
     assistStateEl.textContent = t('generating');
     setBusy(true);
@@ -1057,6 +1082,7 @@
   }
   $('#search-btn').addEventListener('click', async () => {
     const opening = catalogScrim.classList.contains('hidden');
+    if (opening) closeOnboard();
     catalogScrim.classList.toggle('hidden', !opening);
     $('#search-btn').classList.toggle('on', opening);
     if (opening) { await renderCatalog(); catalogQuery.focus(); }
@@ -1084,6 +1110,53 @@
   const sttDefaultModels = { openai: 'whisper-1', gemini: 'gemini-2.5-flash', compatible: '' };
   const endpointTrustDraft = {};
   let settingsSaving = false;
+
+  function updateSttFields() {
+    const local = settings.stt.mode === 'local';
+    $('#local-stt-fields').classList.toggle('hidden', !local);
+    $('#stt-model-field').classList.toggle('hidden', local);
+    $('#stt-protocol-field').classList.toggle('hidden', local || settings.provider !== 'compatible');
+    [...$('#provider-select').options].forEach((option) => { option.disabled = !local && !sttProviderNames.includes(option.value); });
+    customControls.forEach((sync) => sync());
+  }
+  function captureLocalFields() {
+    settings.stt.local = { modelPath: $('#local-model-path').value.trim(), pythonPath: $('#local-python-path').value.trim() };
+  }
+  $('#stt-mode').addEventListener('change', (event) => {
+    captureProviderFields(settings.provider);
+    settings.stt.mode = event.target.value;
+    if (settings.stt.mode === 'api' && !sttProviderNames.includes(settings.provider)) {
+      settings.provider = 'openai';
+      $('#provider-select').value = 'openai';
+    }
+    fillProviderFields(settings.provider);
+    $('#s-status').textContent = statusText();
+  });
+  $('#local-stt-folder').addEventListener('click', async () => {
+    try { const folder = await cue.localSttFolder(); if (folder) $('#local-model-path').value = folder; }
+    catch (error) { $('#local-stt-status').textContent = error.message; }
+  });
+  let localActionBusy = false;
+  async function localAction(setup) {
+    if (localActionBusy) return;
+    localActionBusy = true;
+    const buttons = document.querySelectorAll('.local-stt-actions button');
+    buttons.forEach((button) => { button.disabled = true; });
+    $('#local-stt-status').textContent = setup ? 'Устанавливаю GigaAM…' : 'Проверяю загрузку модели…';
+    try {
+      captureLocalFields();
+      const result = setup ? await cue.localSttSetup() : await cue.localSttCheck(settings.stt.local);
+      settings.stt.local = { modelPath: result.modelPath, pythonPath: result.pythonPath };
+      $('#local-model-path').value = result.modelPath;
+      $('#local-python-path').value = result.pythonPath;
+      $('#local-stt-status').textContent = currentLanguage() === 'ru' ? 'GigaAM готова · CPU' : 'GigaAM ready · CPU';
+    } catch (error) {
+      $('#local-stt-status').textContent = String(error.message).replace(/^Error invoking remote method '[^']+': Error:\s*/, '');
+    } finally { localActionBusy = false; buttons.forEach((button) => { button.disabled = false; }); }
+  }
+  $('#local-stt-check').addEventListener('click', () => localAction(false));
+  $('#local-stt-setup').addEventListener('click', () => localAction(true));
+  cue.on('local-stt:progress', ({ message }) => { $('#local-stt-status').textContent = message; });
 
   function showSettingsTab(name) {
     const tab = name === 'interface' ? 'interface' : 'provider';
@@ -1132,10 +1205,13 @@
     if (!settings.models) settings.models = {};
     if (!settings.stt) settings.stt = {};
     if (!settings.stt.routes) settings.stt.routes = {};
-    if (!sttProviderNames.includes(settings.provider)) {
+    const allowedProviders = settings.stt.mode === 'local' ? providerNames : sttProviderNames;
+    if (!allowedProviders.includes(settings.provider)) {
       settings.provider = sttProviderNames.find((provider) => settings.apiKeys[provider]) || 'openai';
     }
-    settings.stt.provider = settings.provider;
+    settings.stt.provider = sttProviderNames.includes(settings.provider) ? settings.provider : 'openai';
+    settings.stt.mode = settings.stt.mode === 'local' ? 'local' : 'api';
+    if (!settings.stt.local) settings.stt.local = { pythonPath: '', modelPath: '' };
     for (const provider of providerNames) {
       if (settings.apiKeys[provider] === undefined) settings.apiKeys[provider] = '';
       if (settings.baseUrls[provider] === undefined) settings.baseUrls[provider] = '';
@@ -1187,6 +1263,9 @@
       endpointTrustDraft[provider] = trustedValue(settings.baseUrls[provider], settings.trustedBaseUrls[provider], provider);
     }
     $('#provider-select').value = settings.provider;
+    $('#stt-mode').value = settings.stt.mode;
+    $('#local-model-path').value = settings.stt.local.modelPath || '';
+    $('#local-python-path').value = settings.stt.local.pythonPath || '';
     $('#appearance-language').value = settings.appearance.language;
     $('#appearance-drag').checked = settings.appearance.windowDrag;
     $('#appearance-color').value = settings.appearance.backgroundColor;
@@ -1217,9 +1296,9 @@
     $('#endpoint-trust').checked = endpointTrustDraft[provider] === normalizedOrEmpty(settings.baseUrls[provider], provider);
     $('#auth-mode-row').classList.toggle('hidden', provider !== 'compatible');
     $('#send-auth').checked = settings.authModes.compatible !== 'none';
-    const route = settings.stt.routes[provider];
+    const route = settings.stt.routes[provider] || {};
     $('#stt-model').value = route.model || sttDefaultModels[provider] || '';
-    $('#stt-protocol-field').classList.toggle('hidden', provider !== 'compatible');
+    updateSttFields();
     $('#stt-protocol').value = route.protocol === 'chat-audio' ? 'chat-audio' : 'transcriptions';
     updateEndpointNote(false);
   }
@@ -1233,7 +1312,8 @@
     endpointTrustDraft[provider] = $('#endpoint-trust').checked ? normalizedOrEmpty(settings.baseUrls[provider], provider) : '';
     if (provider === 'compatible') settings.authModes.compatible = $('#send-auth').checked ? 'bearer' : 'none';
     const route = settings.stt.routes[provider];
-    route.enabled = true;
+    if (!route) return;
+    route.enabled = settings.stt.mode !== 'local';
     route.authMode = provider === 'compatible' && !$('#send-auth').checked ? 'none' : 'bearer';
     route.protocol = provider === 'compatible' && $('#stt-protocol').value === 'chat-audio' ? 'chat-audio' : 'transcriptions';
     route.model = $('#stt-model').value.trim();
@@ -1335,13 +1415,27 @@
     $('#s-status').textContent = statusText();
   });
   $('#appearance-drag').addEventListener('change', () => { captureAppearanceFields(); applyAppearance(); });
+  $('#panel-positions-reset').addEventListener('click', async () => {
+    settings.appearance.panelPositions = {};
+    panelBehavior?.refresh();
+    try { await cue.settingsSet({ appearance: { panelPositions: {} } }); }
+    catch (error) { showStatus(error.message); }
+  });
+  reducedMotion.addEventListener('change', () => { if (settings) applyAppearance(); });
   $('#appearance-color').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
   $('#appearance-accent').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
   $('#appearance-opacity').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
   $('#appearance-blur').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
   $('#appearance-radius').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
   $('#appearance-text-scale').addEventListener('input', () => { captureAppearanceFields(); applyAppearance(); });
-  $('#appearance-animations').addEventListener('change', () => { captureAppearanceFields(); applyAppearance(); });
+  $('#appearance-animations').addEventListener('change', () => {
+    captureAppearanceFields(); applyAppearance();
+    if (document.documentElement.dataset.animations === 'on') {
+      $('#motion-hint').animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 280, easing: 'ease-out' });
+    } else {
+      document.getAnimations().forEach(animation => animation.cancel());
+    }
+  });
   const appearancePresets = {
     graphite: { backgroundColor: '#14161c', accentColor: '#3c83f5', backgroundOpacity: 0.72, blurStrength: 40, cornerRadius: 24 },
     midnight: { backgroundColor: '#101827', accentColor: '#7c8cff', backgroundOpacity: 0.82, blurStrength: 46, cornerRadius: 22 },
@@ -1371,7 +1465,7 @@
   function statusText() {
     const k = settings.apiKeys;
     const has = [k.openai && 'OpenAI', k.anthropic && 'Anthropic', k.gemini && 'Gemini', k.nvidia && 'Nvidia', k.compatible && 'Custom'].filter(Boolean);
-    const stt = sttProviderNames.filter((provider) => settings.stt.routes[provider].enabled).join(' → ') || 'none';
+    const stt = settings.stt.mode === 'local' ? 'GigaAM · CPU' : sttProviderNames.filter((provider) => settings.stt.routes[provider].enabled).join(' → ') || 'none';
     const endpoint = settings.baseUrls[settings.provider] ? t('customApi') : (settings.provider === 'compatible' ? t('apiNotSet') : t('officialApi'));
     return t('active') + ': ' + settings.provider + ' · ' + endpoint + ' · ' + t('keys') + ': ' + (has.join(', ') || 'none set') + ' · ' + t('stt') + ': ' + stt;
   }
@@ -1393,6 +1487,7 @@
   async function saveSettings() {
     captureAppearanceFields();
     captureProviderFields(settings.provider);
+    captureLocalFields();
     try {
       for (const provider of providerNames) {
         if (provider === settings.provider) continue;
@@ -1416,10 +1511,10 @@
         }
       }
 
-      settings.stt.provider = settings.provider;
+      settings.stt.provider = sttProviderNames.includes(settings.provider) ? settings.provider : 'openai';
       for (const provider of sttProviderNames) {
         const route = settings.stt.routes[provider];
-        route.enabled = provider === settings.provider;
+        route.enabled = settings.stt.mode !== 'local' && provider === settings.provider;
         if (!route.enabled) continue;
         route.baseUrl = settings.baseUrls[provider];
         route.trustedBaseUrl = settings.trustedBaseUrls[provider];
@@ -1520,6 +1615,7 @@
   let ignoring = null;
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
+    if (document.body.matches('.dragging-surfaces, .resizing-panels')) { setIgnore(false); return; }
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #settings, #catalog, #onboard, .panel-resizer'));
     setIgnore(!overUI);
@@ -1554,7 +1650,7 @@
     {
       icon: '🔑',
       title: 'Connect an AI provider',
-      body: 'cue uses <strong>one connection</strong> for the whole meeting flow. Pick <span class="hl">OpenAI</span>, <span class="hl">Google Gemini</span>, or a <span class="hl">Custom OpenAI-compatible</span> provider, then enter its API key and optional endpoint once. The same connection powers transcription, answers, summaries, and screen analysis.',
+      body: 'Choose <strong>Via API</strong> or <strong>Local GigaAM</strong> for transcription. For GigaAM, click Install in Settings (Python 3.12+ required, about 900 MB). Set your AI provider and key for chat, suggested replies and final analysis. Local audio stays on your PC; recognized text goes to the selected AI provider.',
       buttons: [{ label: 'Open cue Settings', action: () => { finishOnboard(); openSettings(); } }]
     },
     {
@@ -1594,7 +1690,7 @@
     {
       icon: '🔑',
       title: 'Подключите провайдера',
-      body: 'Cue использует <strong>одно подключение</strong> для всей встречи. Выберите OpenAI, Gemini или совместимый провайдер и один раз введите API-ключ и необязательный эндпоинт. Это подключение одновременно используется для расшифровки, ответов, итогов и анализа экрана.',
+      body: 'Для расшифровки выберите <strong>Через API</strong> или <strong>Локальная GigaAM</strong>. GigaAM можно установить из настроек: нужен Python 3.12+ и около 900 МБ для модели. ИИ-провайдер и его ключ используются для чата, подсказок и итогового анализа. В локальном режиме аудио остаётся на ПК, а распознанный текст передаётся выбранному ИИ-провайдеру.',
       buttons: [{ label: 'Открыть настройки Cue', action: () => { finishOnboard(); openSettings(); } }]
     },
     {
@@ -1629,6 +1725,8 @@
     $('#ob-skip').style.visibility = obIndex === steps.length - 1 ? 'hidden' : 'visible';
   }
   function showOnboard() {
+    catalogScrim.classList.add('hidden');
+    $('#search-btn').classList.remove('on');
     obIndex = 0;
     renderOnboard();
     obScrim.classList.remove('hidden');
@@ -1662,6 +1760,11 @@
   // ---- boot --------------------------------------------------------------
   (async function boot() {
     settings = await cue.settingsGet();
+    panelBehavior = new window.CuePanelBehavior(() => settings.appearance, async (positions) => {
+      settings.appearance.panelPositions = positions;
+      try { await cue.settingsSet({ appearance: { panelPositions: positions } }); }
+      catch (error) { showStatus(error.message); }
+    });
     if (cue.platform !== 'darwin') {
       $('#placeholder').innerHTML = 'Ask about your screen or conversation, or <span class="keycap">Ctrl</span><span class="keycap">⏎</span> for Assist';
     }
@@ -1685,5 +1788,6 @@
       if (keycaps.length > 0) keycaps[0].textContent = 'Ctrl';
     }
     applyLanguage();
+    document.documentElement.dataset.ready = 'true';
   })();
 })();

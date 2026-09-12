@@ -1,28 +1,34 @@
 {
   "name": "cue",
-  "version": "0.1.8",
+  "version": "0.1.16",
   "description": "Open-source cross-platform AI overlay with screen, microphone, and system-audio input.",
   "license": "GPL-3.0-or-later",
   "author": "cue",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/endpoints.test.js test/recap-export.test.js test/session-journal.test.js test/meeting-tools.test.js",
+    "test": "node --test test/endpoints.test.js test/recap-export.test.js test/session-journal.test.js test/meeting-tools.test.js test/local-stt.test.js",
     "test:ui": "electron test/ui-smoke.js",
     "pack": "electron-builder --dir",
     "dist": "npm run dist:mac",
     "dist:mac": "electron-builder --mac zip --x64 --arm64 --publish never",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "test:behavior": "electron test/panel-behavior.js",
+    "test:assistant": "electron test/assistant-flow.js"
   },
   "build": {
     "appId": "com.cue.overlay",
     "productName": "cue",
     "asar": true,
+    "asarUnpack": [
+      "src/local-stt/*.py"
+    ],
     "files": [
       "main.js",
       "preload.js",
       "src/**/*",
-      "renderer/**/*"
+      "renderer/**/*",
+      "!src/**/__pycache__/**"
     ],
     "mac": {
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",

@@ -4,6 +4,8 @@ const path = require('path');
 const store = require('./src/store');
 const { captureScreenshot } = require('./src/screen');
 const { createSTT } = require('./src/stt');
+const { LocalSTT, setupLocalSTT } = require('./src/local-stt');
+const { SpeechBuffer } = require('./src/speech-buffer');
 const { createLLM } = require('./src/llm');
 const { MODES } = require('./src/prompts');
 const { rms16 } = require('./src/wav');
@@ -12,9 +14,9 @@ const { SessionJournal } = require('./src/session-journal');
 const { searchCatalog, buildCatalog } = require('./src/meeting-catalog');
 const { exportDocx, exportPdf } = require('./src/meeting-export');
 
-const CUE_DOCUMENTS_DIRECTORY = process.platform === 'win32'
+const CUE_DOCUMENTS_DIRECTORY = process.env.CUE_DOCUMENTS_DIR || (process.platform === 'win32'
   ? 'A:\\Cue Documents'
-  : path.join(app.getPath('documents'), 'Cue Documents');
+  : path.join(app.getPath('documents'), 'Cue Documents'));
 
 let win = null;
 let tray = null;
@@ -26,14 +28,18 @@ if (!hasSingleInstanceLock) app.quit();
 // -------- capture / transcript state --------
 const state = { capturing: false, busy: false, transcribing: { you: false, them: false } };
 let sttDisabled = false; // set when the key can't reach any speech model (stops retry spam)
-const buffers = { you: [], them: [] };
+const buffers = { you: new SpeechBuffer(), them: new SpeechBuffer() };
 const transcript = []; // { channel, text, ts }
+const chatHistory = [];
+const localSTT = new LocalSTT({ root: path.join(app.getPath('userData'), 'gigaam') });
+let localSetupPromise = null;
+let captureTransition = false;
+let featurePromise = null;
 const sessionJournal = new SessionJournal(CUE_DOCUMENTS_DIRECTORY);
 let recoverySessions = [];
 let powerBlockerId = null;
 let allowQuit = false;
 const FLUSH_MS = 2200;
-const MIN_BYTES = Math.floor(16000 * 2 * 0.6); // ~0.6s
 const RMS_GATE = 240;
 let flushTimer = null;
 let captureGeneration = 0;
@@ -80,7 +86,7 @@ function enableAutoLaunch() {
 const SCREEN_HINTS = ['экран', 'скрин', 'код', 'задач', 'leetcode', 'ошибк', 'сайт', 'страниц', 'кнопк', 'таблиц', 'консол', 'терминал', 'интерфейс', 'формул', 'график', 'screen', 'screenshot', 'code', 'error', 'page', 'button', 'table', 'console'];
 function shouldCaptureScreen(mode, userText) {
   if (mode === 'leetcode') return true;
-  if (mode === 'recap') return state.capturing;
+  if (mode === 'recap') return false;
   if (mode !== 'assist' && mode !== 'ask') return false;
   if (mode === 'assist' && !userText) return false;
   const context = [userText || '', ...transcript.slice(-6).map((turn) => turn.text)].join(' ').toLowerCase();
@@ -137,7 +143,7 @@ function toggleWindow() {
 }
 
 async function requestQuit(reason = 'exit') {
-  if (!state.capturing) { allowQuit = true; app.quit(); return; }
+  if (!state.capturing) { if (finalizationPromise) await finalizationPromise; allowQuit = true; app.quit(); return; }
   const choice = dialog.showMessageBoxSync(win, {
     type: 'warning', buttons: ['Finish and save RAW', 'Stay'], defaultId: 1, cancelId: 1,
     title: 'Cue is recording',
@@ -178,7 +184,7 @@ function createWindow() {
   // A wide transparent host lets non-modal sidecars sit beside the centered
   // assistant while the empty areas remain click-through.
   const W = Math.min(1600, workArea.width);
-  const H = Math.min(720, workArea.height - 12);
+  const H = workArea.height - 12;
   win = new BrowserWindow({
     width: W,
     height: H,
@@ -230,37 +236,39 @@ function createWindow() {
 // -------- STT flushing --------
 async function flushChannel(channel, options = {}) {
   if (pendingTranscriptions[channel]) return pendingTranscriptions[channel];
-  const chunks = buffers[channel];
-  if (!chunks.length) return;
+  const settings = store.getSettings();
+  const chunk = buffers[channel].take({ force: options.allowShort === true, live: settings.stt.mode === 'local' });
+  if (!chunk) return;
   const generation = options.generation === undefined ? captureGeneration : options.generation;
   const allowStopped = options.allowStopped === true;
-  const allowShort = options.allowShort === true;
-  const pcm = Buffer.concat(chunks);
-  buffers[channel] = [];
-  if (pcm.length < MIN_BYTES && !allowShort) return;
+  const { pcm, ts } = chunk;
   if (rms16(pcm) < RMS_GATE) return; // silence gate
 
   state.transcribing[channel] = true;
   const task = (async () => {
     try {
-      const settings = store.getSettings();
-      const stt = createSTT(settings);
+      const stt = createSTT(settings, { localSTT });
       if (!stt.available) {
         if (!sttDisabled) { sttDisabled = true; send('status', { message: stt.error || 'No transcription route is ready. Add a speech-to-text key in Settings. Screen features work without it.' }); }
         return;
       }
       sendDiagnostics({ stt: 'working', queued: Object.values(pendingTranscriptions).filter(Boolean).length });
-      const res = await stt.transcribe(pcm);
+      let res = await stt.transcribe(pcm);
+      if (res.error && settings.stt.mode === 'local') {
+        sendDiagnostics({ stt: 'working', sttError: 'Повторяю локальное распознавание фрагмента.' });
+        res = await stt.transcribe(pcm);
+      }
       if (res.error) {
         sendDiagnostics({ stt: 'error', sttError: res.error.message });
-        if (generation === captureGeneration && (state.capturing || allowStopped)) handleSttError(res.error, settings);
+        if (generation === captureGeneration && (state.capturing || allowStopped || finalizingGeneration === generation)) handleSttError(res.error, settings);
         return;
       }
-      if ((!state.capturing && !allowStopped) || generation !== captureGeneration) return;
+      if ((!state.capturing && !allowStopped && finalizingGeneration !== generation) || generation !== captureGeneration) return;
       const text = res.text && res.text.trim();
       sendDiagnostics({ stt: 'ok', sttProvider: res.provider || null });
       if (text && !isDuplicateTurn(channel, text)) {
         for (const turn of parseSpeakerTurns(channel, text)) {
+        turn.ts = ts;
         try {
           await sessionJournal.appendTurn(turn);
           sendDiagnostics({ disk: 'ok' });
@@ -269,6 +277,7 @@ async function flushChannel(channel, options = {}) {
           await sessionJournal.appendError(error, 'journal-write').catch(() => {});
         }
         transcript.push(turn);
+        transcript.sort((a, b) => a.ts - b.ts);
         if (DEBUG) console.log(`[TRANSCRIPT] ${channel === 'you' ? 'You' : 'Them'}:`, turn.text);
         send('transcript', turn);
         }
@@ -301,7 +310,7 @@ function scheduleAutoAssist() {
     if (!assistActive || !state.capturing || transcript.length <= assistTurnCount) return;
     if (state.busy) { assistQueued = true; return; }
     assistTurnCount = transcript.length;
-    runFeature('assist', '');
+    runFeature('auto', '');
   }, ASSIST_IDLE_MS);
 }
 
@@ -310,16 +319,16 @@ function setAssistActive(active) {
   assistQueued = false;
   clearTimeout(assistTimer);
   assistTimer = null;
-  assistTurnCount = transcript.length;
+  assistTurnCount = active ? Math.max(0, transcript.length - 1) : transcript.length;
   send('status', { message: assistActive ? 'Помощь в реальном времени включена.' : 'Помощь в реальном времени выключена.' });
   if (assistActive) scheduleAutoAssist();
   return assistActive;
 }
 
 async function ensureRawTranscript(reason) {
-  if (sessionJournal.data && sessionJournal.data.rawFile) return { filePath: sessionJournal.data.rawFile, fileName: path.basename(sessionJournal.data.rawFile) };
+  if (sessionJournal.data && sessionJournal.data.rawFile && sessionJournal.data.rawTurnCount === transcript.length) return { filePath: sessionJournal.data.rawFile, fileName: path.basename(sessionJournal.data.rawFile) };
   const raw = await saveTranscriptFallback({ outputDirectory: CUE_DOCUMENTS_DIRECTORY, transcript: [...transcript], reason });
-  await sessionJournal.mark(sessionJournal.data && sessionJournal.data.status || 'finalizing', { rawFile: raw.filePath });
+  await sessionJournal.mark(sessionJournal.data && sessionJournal.data.status || 'finalizing', { rawFile: raw.filePath, rawTurnCount: transcript.length });
   sendDiagnostics({ disk: 'ok' });
   return raw;
 }
@@ -330,17 +339,16 @@ async function finalizeCapture(generation, options = {}) {
     await waitForTranscriptions();
     if (state.capturing || generation !== captureGeneration) return;
 
-    let finalScreenImage = null;
-    try { finalScreenImage = await captureScreenshot(getCaptureDisplay()); }
-    catch (error) { console.log('[recap] screen capture unavailable', error && error.message); }
-
-    await Promise.all([
-      flushChannel('you', { generation, allowStopped: true, allowShort: true }),
-      flushChannel('them', { generation, allowStopped: true, allowShort: true })
-    ]);
+    while (buffers.you.bytes || buffers.them.bytes) {
+      await Promise.all([
+        flushChannel('you', { generation, allowStopped: true, allowShort: true }),
+        flushChannel('them', { generation, allowStopped: true, allowShort: true })
+      ]);
+    }
     if (state.capturing || generation !== captureGeneration) return;
 
-    if (!transcript.length && !finalScreenImage) {
+    if (!transcript.length) {
+      await sessionJournal.mark('failed');
       send('status', { message: 'Не удалось распознать речь для итогов созвона.' });
       return;
     }
@@ -354,15 +362,27 @@ async function finalizeCapture(generation, options = {}) {
     }
     send('status', { message: `RAW сохранён: ${raw.fileName}. Готовлю AI-итог...` });
     send('status', { message: 'Транскрипция готова. Готовлю итог созвона...' });
-    await runFeature('recap', '', { imageDataUrl: finalScreenImage });
+    if (featurePromise) await featurePromise;
+    await runFeature('recap', '', { final: true });
   } finally {
     if (finalizingGeneration === generation) finalizingGeneration = null;
+    await refreshRecovery();
   }
+}
+
+async function refreshRecovery() {
+  recoverySessions = await sessionJournal.listIncomplete().catch(() => []);
+  send('recovery:available', { sessions: recoverySessions });
 }
 
 function handleSttError(err, settings) {
   console.log('[stt] error', err.provider, err.status, err.code, err.message);
   sessionJournal.appendError(err, 'stt').catch(() => {});
+  if (err.provider === 'local-gigaam') {
+    send('status', { message: 'Фрагмент не распознан локальной GigaAM: ' + err.message + ' Аудио не отправлено через API. Запись остановлена.' });
+    if (state.capturing) void setCapturing(false, { rawOnly: true }).catch(() => {});
+    return;
+  }
   if (sttDisabled) return;
   const noAccess = err.status === 403 || err.status === 401 || err.code === 'model_not_found';
   sttDisabled = noAccess;
@@ -375,7 +395,7 @@ function handleSttError(err, settings) {
 
 function startFlushLoop() {
   if (flushTimer) return;
-  flushTimer = setInterval(() => { flushChannel('you'); flushChannel('them'); }, FLUSH_MS);
+  flushTimer = setInterval(() => { flushChannel('you'); flushChannel('them'); }, store.getSettings().stt.mode === 'local' ? 200 : FLUSH_MS);
 }
 function stopFlushLoop() { if (flushTimer) { clearInterval(flushTimer); flushTimer = null; } }
 
@@ -389,48 +409,84 @@ function openRecapInMarkEdit(filePath) {
 // getDisplayMedia loopback for system audio) so they run inside cue's own process
 // and use cue's own Screen-Recording grant — no separate helper binary to authorize.
 async function setCapturing(active, options = {}) {
-  state.capturing = active;
-  if (active) captureGeneration += 1;
-  const stoppedGeneration = active ? null : captureGeneration;
-  if (active) {
-    if (powerBlockerId === null) powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
-    finalizingGeneration = null;
-    sttDisabled = false;
-    if (!options.resume) {
-      transcript.length = 0;
-      await sessionJournal.start();
-    } else {
-      await sessionJournal.mark('recording');
+  if (captureTransition) throw new Error('Дождитесь запуска записи.');
+  if (active && (finalizationPromise || state.busy)) throw new Error('Дождитесь ответа или сохранения предыдущей встречи.');
+  if (active && localSetupPromise) throw new Error('Дождитесь установки GigaAM.');
+  captureTransition = true;
+  try {
+    if (active && store.getSettings().stt.mode === 'local') {
+      send('status', { message: 'Загружаю локальную GigaAM…' });
+      await localSTT.prepare(store.getSettings().stt.local);
     }
-    sendDiagnostics({ disk: 'ok', stt: 'idle', queued: 0 });
-    buffers.you = []; buffers.them = [];
-    assistTurnCount = 0;
-    assistQueued = false;
-    startFlushLoop();
-  } else {
-    if (powerBlockerId !== null && powerSaveBlocker.isStarted(powerBlockerId)) powerSaveBlocker.stop(powerBlockerId);
-    powerBlockerId = null;
-    await sessionJournal.mark('finalizing');
-    finalizingGeneration = stoppedGeneration;
-    clearTimeout(assistTimer);
-    assistTimer = null;
-    assistQueued = false;
-    stopFlushLoop();
-  }
-  send('capture:state', { active });
-  if (stoppedGeneration !== null) {
-    send('status', { message: 'Запись остановлена. Догружаю последние фразы...' });
-    finalizationPromise = finalizeCapture(stoppedGeneration, options).catch(async (e) => {
-      console.log('[recap] error', e && e.message);
-      await sessionJournal.appendError(e, 'finalize').catch(() => {});
-      await sessionJournal.mark('failed').catch(() => {});
-    }).finally(() => { finalizationPromise = null; });
-  }
-  return active;
+    state.capturing = active;
+    if (active) captureGeneration += 1;
+    const stoppedGeneration = active ? null : captureGeneration;
+    if (active) {
+      if (powerBlockerId === null) powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+      finalizingGeneration = null;
+      sttDisabled = false;
+      if (!options.resume) {
+        transcript.length = 0;
+        chatHistory.length = 0;
+        await sessionJournal.start();
+      } else {
+        await sessionJournal.mark('recording', { recapFile: null, completedAt: null });
+      }
+      sendDiagnostics({ disk: 'ok', stt: 'idle', queued: 0 });
+      buffers.you.clear(); buffers.them.clear();
+      assistTurnCount = 0;
+      assistQueued = false;
+      startFlushLoop();
+    } else {
+      finalizingGeneration = stoppedGeneration;
+      stopFlushLoop();
+      if (powerBlockerId !== null && powerSaveBlocker.isStarted(powerBlockerId)) powerSaveBlocker.stop(powerBlockerId);
+      powerBlockerId = null;
+      clearTimeout(assistTimer);
+      assistTimer = null;
+      assistQueued = false;
+      await sessionJournal.mark('finalizing').catch((error) => {
+        sendDiagnostics({ disk: 'error', diskError: error.message });
+      });
+    }
+    send('capture:state', { active });
+    if (stoppedGeneration !== null) {
+      send('status', { message: 'Запись остановлена. Догружаю последние фразы...' });
+      finalizationPromise = finalizeCapture(stoppedGeneration, options).catch(async (e) => {
+        console.log('[recap] error', e && e.message);
+        await sessionJournal.appendError(e, 'finalize').catch(() => {});
+        await sessionJournal.mark('failed').catch(() => {});
+        send('llm:error', { message: 'Не удалось завершить сохранение: ' + e.message + '. Расшифровку можно восстановить в блоке незавершённых встреч.' });
+        await refreshRecovery();
+      }).finally(() => { finalizationPromise = null; });
+    }
+    return active;
+  } catch (error) {
+    if (active) {
+      state.capturing = false;
+      stopFlushLoop();
+      if (powerBlockerId !== null && powerSaveBlocker.isStarted(powerBlockerId)) powerSaveBlocker.stop(powerBlockerId);
+      powerBlockerId = null;
+      send('capture:state', { active: false });
+    }
+    throw error;
+  } finally { captureTransition = false; }
 }
 
 // -------- feature runner --------
-async function runFeature(mode, userText, options = {}) {
+function runFeature(mode, userText, options = {}) {
+  if (!MODES[mode]) { send('llm:error', { message: 'Неизвестное действие.' }); return Promise.resolve(); }
+  if (finalizationPromise && !options.final) {
+    send('status', { message: 'Дождитесь сохранения итогов встречи.' });
+    if (!state.busy) send('llm:done', { suppress: true });
+    return Promise.resolve();
+  }
+  if (state.busy) return featurePromise || Promise.resolve();
+  featurePromise = performFeature(mode, userText, options).finally(() => { featurePromise = null; });
+  return featurePromise;
+}
+
+async function performFeature(mode, userText, options = {}) {
   if (DEBUG) console.log('[DEBUG MAIN] runFeature called:', { mode, userText, isBusy: state.busy });
   if (state.busy) return;
   const def = MODES[mode];
@@ -439,21 +495,19 @@ async function runFeature(mode, userText, options = {}) {
     return;
   }
   state.busy = true;
+  const saveFinal = mode === 'recap' && !state.capturing;
   try {
     const settings = store.getSettings();
-    const llm = createLLM(settings, { fast: mode === 'assist', maxTokens: mode === 'assist' ? 450 : undefined });
+    const llm = createLLM(settings, { fast: mode === 'auto' });
     const language = settings.appearance && settings.appearance.language === 'en' ? 'en' : 'ru';
-    const userBubble = def.userBubble !== null
-      ? (mode === 'ask' ? userText : (language === 'ru' && def.userBubbleRu ? def.userBubbleRu : def.userBubble))
-      : null;
+    const userBubble = userText || (language === 'ru' && def.userBubbleRu ? def.userBubbleRu : def.userBubble);
     if (DEBUG) console.log('[DEBUG MAIN] LLM settings loaded:', { provider: settings.provider, smart: settings.smart });
-    const appendResponse = (mode === 'assist' && assistActive) || mode === 'recap';
+    const appendResponse = true;
     send('llm:start', { userBubble, small: !!def.small, append: appendResponse, responseLabel: mode === 'recap' ? 'Итог' : 'Помощь' });
 
     if (!llm.ready) {
       if (DEBUG) console.log('[DEBUG MAIN] LLM not ready (missing key or model).');
-      send('llm:error', { message: llm.error || ('Add your ' + settings.provider + ' API key in Settings (gear icon) to start. Model: ' + (llm.model || 'unset') + '.') });
-      return;
+      throw new Error(llm.error || 'Настройте модель и API-ключ.');
     }
 
     let imageDataUrl = options.imageDataUrl || null;
@@ -480,23 +534,37 @@ async function runFeature(mode, userText, options = {}) {
       }
     }
 
-    const built = def.build({ transcript, userText: userText || '' });
+    if (state.capturing && mode !== 'leetcode') {
+      await waitForTranscriptions();
+      await Promise.all(['you', 'them'].map((channel) => flushChannel(channel, { allowShort: true })));
+    }
+    if (def.needsScreen && !def.screenOptional && !imageDataUrl) throw new Error('Не удалось получить экран с задачей.');
+    const snapshot = transcript.map((turn) => ({ ...turn }));
+    if (mode === 'recap' && !snapshot.length) throw new Error('Пока нет распознанных реплик для резюме.');
+    if (saveFinal) await ensureRawTranscript('Сохранено перед генерацией AI-итога.');
+    const built = def.build({ transcript: snapshot, userText: userText || '' });
     if (DEBUG) console.log('[DEBUG MAIN] Built prompt. Starting LLM stream...');
     const languageInstruction = language === 'ru'
       ? '\nRespond in Russian unless the user explicitly asks for another language.'
       : '\nRespond in English unless the user explicitly asks for another language.';
     const fullText = await llm.stream({
       system: def.system + languageInstruction,
-      turns: [{ role: 'user', text: built }],
+      turns: [...(mode === 'ask' || (userText && ['say', 'assist', 'followup'].includes(mode)) ? chatHistory.slice(-12) : []), { role: 'user', text: built }],
       imageDataUrl,
-      onToken: (t) => send('llm:token', { text: t })
+      onToken: (t) => { if (mode !== 'auto') send('llm:token', { text: t }); }
     });
     if (DEBUG) console.log('[DEBUG MAIN] Full LLM Output:\n', fullText);
-    const suppress = mode === 'assist' && /^NO_ACTION[.!]?$/i.test(String(fullText || '').trim());
+    if (!String(fullText || '').trim()) throw new Error('Модель вернула пустой ответ. Повторите запрос.');
+    const suppress = mode === 'auto' && /^NO_ACTION[.!]?$/i.test(String(fullText || '').trim());
+    if (mode === 'auto' && !suppress) send('llm:token', { text: fullText });
+    if (!suppress && mode !== 'recap' && fullText) {
+      chatHistory.push({ role: 'user', text: userText || userBubble || 'Предложи ответ на последнюю реплику собеседника.' }, { role: 'assistant', text: fullText });
+      if (chatHistory.length > 24) chatHistory.splice(0, chatHistory.length - 24);
+    }
     let savedRecap = null;
-    if (mode === 'recap' && fullText && String(fullText).trim()) {
+    if (saveFinal) {
       try {
-        savedRecap = await saveRecap({ outputDirectory: CUE_DOCUMENTS_DIRECTORY, summary: fullText, transcript: [...transcript] });
+        savedRecap = await saveRecap({ outputDirectory: CUE_DOCUMENTS_DIRECTORY, summary: fullText, transcript: snapshot });
         await sessionJournal.mark('completed', { recapFile: savedRecap.filePath, completedAt: new Date().toISOString() });
         send('status', { message: `Итог сохранён: ${savedRecap.fileName}` });
         openRecapInMarkEdit(savedRecap.filePath);
@@ -505,19 +573,21 @@ async function runFeature(mode, userText, options = {}) {
         console.log('[recap] save error', error && error.message);
         await sessionJournal.appendError(error, 'recap-save').catch(() => {});
         await sessionJournal.mark('failed').catch(() => {});
-        send('status', { message: 'Итог готов, но не удалось сохранить Markdown-файл.' });
+        send('status', { message: 'Итог готов в чате, но не удалось сохранить Markdown-файл: ' + error.message });
       }
     }
     send('llm:done', { suppress, recapFile: savedRecap && savedRecap.filePath });
   } catch (e) {
-    if (mode === 'recap') {
+    if (saveFinal) {
       await sessionJournal.appendError(e, 'recap-generation').catch(() => {});
       await sessionJournal.mark('failed').catch(() => {});
     }
-    send('llm:error', { message: 'Error: ' + (e && e.message ? e.message : String(e)) });
+    const detail = e.status === 503 ? 'Сервис модели временно недоступен (503).' : (e && e.message ? e.message : String(e));
+    send('llm:error', { message: detail + (saveFinal ? ' Итог не сформирован. RAW сохранён, если запись на диск была доступна. Повторите через «Итог» в незавершённых встречах.' : '') });
   } finally {
     state.busy = false;
-    if (mode === 'assist' && assistActive && state.capturing && assistQueued) {
+    if (saveFinal) await refreshRecovery();
+    if (assistActive && state.capturing && assistQueued) {
       assistQueued = false;
       scheduleAutoAssist();
     }
@@ -526,10 +596,42 @@ async function runFeature(mode, userText, options = {}) {
 
 // -------- IPC --------
 ipcMain.handle('settings:get', () => store.getSettings());
-ipcMain.handle('settings:set', (_e, patch) => { sttDisabled = false; return store.setSettings(patch); });
+ipcMain.handle('settings:set', (_e, patch) => {
+  if (patch.stt && JSON.stringify(patch.stt) !== JSON.stringify(store.getSettings().stt) && (state.capturing || finalizationPromise || captureTransition)) {
+    throw new Error('Завершите запись перед сменой расшифровки.');
+  }
+  sttDisabled = false;
+  return store.setSettings(patch);
+});
+ipcMain.handle('local-stt:check', async (_e, config) => {
+  if (state.capturing || finalizationPromise || captureTransition || localSetupPromise) throw new Error('Дождитесь завершения записи или установки.');
+  return localSTT.prepare(config);
+});
+ipcMain.handle('local-stt:folder', async () => {
+  const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'], title: 'Папка GigaAM v3 E2E RNN-T' });
+  return result.canceled ? null : result.filePaths[0];
+});
+ipcMain.handle('local-stt:setup', async () => {
+  if (state.capturing || finalizationPromise || captureTransition) throw new Error('Завершите запись перед установкой GigaAM.');
+  if (!localSetupPromise) {
+    localSTT.stop();
+    localSetupPromise = setupLocalSTT(localSTT.root, (message) => send('local-stt:progress', { message }))
+      .then(async (config) => { await localSTT.prepare(config); return config; })
+      .finally(() => { localSetupPromise = null; });
+  }
+  return localSetupPromise;
+});
 ipcMain.handle('assist:toggle', () => setAssistActive(!assistActive));
 ipcMain.handle('capture:toggle', () => setCapturing(!state.capturing));
-ipcMain.handle('capture:finish-raw', () => state.capturing ? setCapturing(false, { rawOnly: true }) : ensureRawTranscript('Сохранено вручную без AI-итога.'));
+ipcMain.handle('capture:finish-raw', async () => {
+  if (finalizationPromise) { await finalizationPromise; return; }
+  if (state.capturing) return setCapturing(false, { rawOnly: true });
+  if (!transcript.length) throw new Error('Пока нет распознанных реплик для сохранения.');
+  const raw = await ensureRawTranscript('Сохранено вручную без AI-итога.');
+  send('status', { message: `RAW сохранён: ${raw.fileName}` });
+  openRecapInMarkEdit(raw.filePath);
+  return raw;
+});
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
 ipcMain.handle('sessions:list', () => sessionJournal.listIncomplete());
 ipcMain.handle('sessions:dismiss', async (_e, filePath) => {
@@ -539,6 +641,8 @@ ipcMain.handle('sessions:dismiss', async (_e, filePath) => {
   return recoverySessions;
 });
 ipcMain.handle('sessions:open', async (_e, filePath) => {
+  if (state.capturing || finalizationPromise || state.busy || captureTransition) throw new Error('Завершите текущую встречу перед открытием другой.');
+  chatHistory.length = 0;
   const loaded = await sessionJournal.load(filePath);
   transcript.length = 0;
   transcript.push(...loaded.data.transcript);
@@ -546,6 +650,8 @@ ipcMain.handle('sessions:open', async (_e, filePath) => {
   return shell.openPath(raw.filePath);
 });
 ipcMain.handle('sessions:summary', async (_e, filePath) => {
+  if (state.capturing || finalizationPromise || state.busy || captureTransition) throw new Error('Завершите текущую встречу перед открытием другой.');
+  chatHistory.length = 0;
   const loaded = await sessionJournal.load(filePath);
   transcript.length = 0;
   transcript.push(...loaded.data.transcript);
@@ -556,6 +662,8 @@ ipcMain.handle('sessions:summary', async (_e, filePath) => {
   return true;
 });
 ipcMain.handle('sessions:continue', async (_e, filePath) => {
+  if (state.capturing || finalizationPromise || state.busy || captureTransition) throw new Error('Завершите текущую встречу перед открытием другой.');
+  chatHistory.length = 0;
   const loaded = await sessionJournal.load(filePath);
   transcript.length = 0;
   transcript.push(...loaded.data.transcript);
@@ -582,8 +690,17 @@ ipcMain.handle('catalog:extract', async (_e, filePath, kind) => {
   return kind === 'decisions' ? item.decisions : item.tasks;
 });
 ipcMain.on('ask', (_e, payload) => runFeature(payload.mode, payload.text));
-ipcMain.on('mic:pcm', (_e, arrayBuffer) => { if (state.capturing || finalizingGeneration === captureGeneration) buffers.you.push(Buffer.from(arrayBuffer)); });
-ipcMain.on('system:pcm', (_e, arrayBuffer) => { if (state.capturing || finalizingGeneration === captureGeneration) buffers.them.push(Buffer.from(arrayBuffer)); });
+function acceptPcm(channel, arrayBuffer) {
+  if (!(state.capturing || finalizingGeneration === captureGeneration)) return;
+  try { buffers[channel].push(Buffer.from(arrayBuffer)); }
+  catch (error) {
+    send('status', { message: error.message });
+    sessionJournal.appendError(error, 'audio-backlog').catch(() => {});
+    if (state.capturing) void setCapturing(false, { rawOnly: true }).catch(() => {});
+  }
+}
+ipcMain.on('mic:pcm', (_e, arrayBuffer) => acceptPcm('you', arrayBuffer));
+ipcMain.on('system:pcm', (_e, arrayBuffer) => acceptPcm('them', arrayBuffer));
 ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, { forward: true }); });
 ipcMain.on('open-pane', (_e, url) => { shell.openExternal(url).catch(() => {}); });
 ipcMain.on('settings:open', () => send('settings:open'));
@@ -640,10 +757,11 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
+  localSTT.stop();
   globalShortcut.unregisterAll();
   if (tray) { tray.destroy(); tray = null; }
 });
 app.on('before-quit', (event) => {
-  if (state.capturing && !allowQuit) { event.preventDefault(); void requestQuit(); }
+  if ((state.capturing || finalizationPromise) && !allowQuit) { event.preventDefault(); void requestQuit(); }
 });
 app.on('window-all-closed', () => app.quit());
