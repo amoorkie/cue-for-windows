@@ -8,12 +8,31 @@ function stripDataUrl(dataUrl) {
   return m ? { mime: m[1], b64: m[2] } : null;
 }
 
+// Some compatible gateways return { code, message } instead of { error: ... }.
+// Normalize only failed responses so the SDK preserves their actual reason.
+async function fetchWithGatewayErrors(url, init) {
+  const response = await fetch(url, init);
+  if (response.status < 400) return response;
+  const raw = await response.text();
+  let body = raw;
+  try {
+    const data = JSON.parse(raw);
+    if (data && !data.error && typeof data.message === 'string') body = JSON.stringify({ error: data });
+  } catch { /* Keep non-JSON errors unchanged. */ }
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+}
+
 async function streamOpenAI({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, baseURL, authMode }) {
   if (DEBUG) console.log('[DEBUG LLM] streamOpenAI called', { model, baseURL, hasImage: !!imageDataUrl, maxTokens });
   const OpenAI = require('openai');
   const client = new OpenAI({
     apiKey: apiKey || 'local-api-key',
     baseURL,
+    fetch: fetchWithGatewayErrors,
+    timeout: 90000,
     defaultHeaders: authMode === 'none' ? { Authorization: null } : undefined
   });
   const messages = [{ role: 'system', content: system }];
@@ -32,10 +51,17 @@ async function streamOpenAI({ apiKey, model, system, turns, imageDataUrl, maxTok
   try {
     const stream = await client.chat.completions.create({ model, messages, stream: true, max_tokens: maxTokens });
     let full = '';
+    let finishReason = null;
     for await (const part of stream) {
+      if (part.error) throw new Error(part.error.message || 'API stream failed.');
+      const choice = part.choices && part.choices[0];
+      if (choice && choice.finish_reason) finishReason = choice.finish_reason;
       const d = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content;
       if (d) { full += d; onToken(d); }
     }
+    if (finishReason === 'length') throw new Error('Ответ оборвался: модель исчерпала лимит вывода. Сократите запрос или выберите другую модель.');
+    if (finishReason === 'content_filter') throw new Error('Сервис модели заблокировал ответ фильтром содержимого.');
+    if (!full.trim()) throw new Error('Модель вернула пустой ответ. Повторите запрос или проверьте выбранную модель.');
     if (DEBUG) console.log('[DEBUG LLM] streamOpenAI finished successfully, total length:', full.length);
     return full;
   } catch (err) {
@@ -131,8 +157,7 @@ function createLLM(settings, options = {}) {
   const effectiveApiKey = apiKey || (noAuth ? 'local-api-key' : '');
   const malformedBearerKey = provider === 'compatible' && !noAuth && !!apiKey && /\s/.test(apiKey);
   
-  // Set to 4096 (effectively unlimited for a single response) 
-  // since some SDKs like Anthropic require a maxTokens value.
+  // A bounded output budget; reasoning-capable gateways may share it with reasoning.
   const maxTokens = options.maxTokens || 4096;
 
   const ready = !endpointError && !!model && !!effectiveApiKey && !malformedBearerKey;
@@ -150,9 +175,18 @@ function createLLM(settings, options = {}) {
     async stream(params) {
       if (DEBUG) console.log('[DEBUG LLM] stream() invoked for provider:', provider);
       const args = { apiKey: effectiveApiKey, model, maxTokens, baseURL, authMode, ...params };
-      if (provider === 'openai') return streamOpenAI(args);
-      if (provider === 'nvidia') return streamOpenAI(args);
-      if (provider === 'compatible') return streamOpenAI(args);
+      if (['openai', 'nvidia', 'compatible'].includes(provider)) {
+        try { return await streamOpenAI(args); }
+        catch (error) {
+          if (error.code === 'INSUFFICIENT_BALANCE') {
+            const host = new URL(baseURL).host;
+            error.message = settings.appearance?.language === 'en'
+              ? `Insufficient account balance at ${host}. Top up the API service balance to continue.`
+              : `Недостаточно средств на балансе аккаунта ${host}. Пополните баланс API-сервиса, чтобы получать ответы.`;
+          }
+          throw error;
+        }
+      }
       if (provider === 'anthropic') return streamAnthropic(args);
       if (provider === 'gemini') return streamGemini(args);
       throw new Error('unknown provider: ' + provider);

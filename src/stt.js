@@ -1,6 +1,5 @@
-// Speech-to-text factory. Decoupled from the LLM provider because Anthropic has
-// no audio API — we transcribe with whatever audio-capable key is available, and
-// fall back across providers. Returns { text, provider } or { text:'', error }.
+// Local mode uses only the private GigaAM worker. API mode retains explicitly
+// enabled speech routes. Returns { text, provider } or { text: '', error }.
 const { pcmToWav } = require('./wav');
 const { normalizeBaseURL, resolveBaseURL, STT_PROVIDERS } = require('./endpoints');
 
@@ -72,7 +71,18 @@ async function transcribeCompatibleChat(apiKey, wav, model, baseURL, authMode) {
   return '';
 }
 
-function createSTT(settings) {
+function createSTT(settings, { localSTT } = {}) {
+  if (settings.stt && settings.stt.mode === 'local') {
+    return {
+      available: !!localSTT,
+      error: localSTT ? null : 'Локальная GigaAM не подключена.',
+      providers: ['local-gigaam'],
+      async transcribe(pcm) {
+        try { return await localSTT.transcribe(pcm, settings.stt.local); }
+        catch (error) { return { text: '', error: { provider: 'local-gigaam', code: 'local_stt_error', message: error.message } }; }
+      }
+    };
+  }
   const keys = settings.apiKeys || {};
   const sttKeys = settings.sttApiKeys || {};
   const chain = [];

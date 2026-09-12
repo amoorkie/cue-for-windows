@@ -8,7 +8,7 @@
 
 ### [⬇ Скачать Cue для Windows](../../releases/latest) · [⬇ Скачать Cue для macOS](../../releases/latest)
 
-[Все релизы](../../releases) · Текущая версия: **0.1.8** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
+[Все релизы](../../releases) · Версия исходников: **0.1.9** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
 
 <img src="docs/tutorial.png" width="620" alt="cue first-run tutorial" />
 
@@ -29,7 +29,11 @@
 
 cue floats a small glass panel on top of everything. It takes **three separate inputs** — your **screen**, your **microphone**, and your **meeting audio** (what the other person says) — and uses an AI model to help you in real time.
 
-Во время записи в панели доступен живой конспект с каналами «Вы» и «Собеседник». При включённой «Помощи» cue автоматически отвечает только на реплики, которые действительно требуют ответа; служебный ответ `NO_ACTION` скрывается. На Windows cue запускается вместе с системой, а после остановки записи итог с учётом финального снимка экрана сохраняется в `A:\Cue Documents\*.md` и открывается системным Markdown-ридером.
+Во время записи в панели доступен живой конспект с каналами «Вы» и «Собеседник». «Помоги» даёт разовый ответ; отдельная «Автопомощь» предлагает ответы на вопросы собеседника автоматически. «Что ответить?» отвечает на последний неразрешённый вопрос любого участника. Текст в поле ввода имеет приоритет при нажатии быстрых действий. «Что спросить дальше?» предлагает вопросы. «Краткое резюме» во время записи показывает промежуточный итог в чате и оставляет встречу активной.
+
+После остановки Cue сохраняет RAW, затем формирует итог по полной расшифровке без скриншота рабочего стола и сохраняет его в `A:\Cue Documents\*.md`. «Сохранить RAW» завершает запись без запроса к AI. При сбое итог можно повторить через «Итог» в незавершённых встречах. Продолжение записи обновляет RAW при следующем сохранении. На Windows Cue запускается вместе с системой.
+
+Ответы для созвона используют короткие абзацы: прямой ответ, конкретный механизм и одно полезное пояснение или пример. Жёсткого лимита слов нет. В резюме сохраняются все существенные темы, решения, задачи и открытые вопросы без ограничения числа пунктов.
 
 | Feature | How to trigger | What it uses |
 |---|---|---|
@@ -120,7 +124,9 @@ cue uses **your own** API key, so it's free to run (you only pay your AI provide
 | **Google Gemini** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | One key does chat + transcription. |
 | **Custom** | Your gateway or local server | Must support both the selected chat/vision models and the configured audio transcription protocol. |
 
-Settings use one provider connection for the entire meeting flow. Enter the provider, API key, and optional endpoint once; cue uses them for transcription, answers, summaries, and screen understanding. Models, protocols, and authentication modes live under **Advanced**. A custom endpoint must support both the selected chat/vision models and the configured audio transcription protocol. cue requires explicit confirmation before sending the key, audio, text, or screenshots to a custom destination. HTTP is accepted only for same-computer loopback endpoints; LAN and public endpoints must use HTTPS.
+В настройках выберите расшифровку **«Через API»** или **«Локальная GigaAM»**. GigaAM обрабатывает звук на вашем ПК; ИИ-провайдер и его ключ используются для чата, подсказок и итогового анализа по распознанному тексту. Для установки GigaAM из Cue нужен Python 3.12+ и около 900 МБ для весов. Модель остаётся загруженной между фрагментами. [Настройка и ограничения локальной расшифровки](docs/LOCAL-STT.md).
+
+В режиме API сохраняется одно подключение для расшифровки и чата. Модели, протоколы и авторизация доступны в **«Дополнительно»**. Пользовательский адрес должен поддерживать чат и, только при расшифровке через API, выбранный аудиопротокол. Перед отправкой данных на пользовательский адрес Cue требует отметить доверие к нему. HTTP разрешён только для локальных адресов компьютера; остальные адреса требуют HTTPS.
 
 Your key is stored **only on your computer** (in `cue-data.json`) and is sent only to the official provider or custom destination you explicitly selected and trusted. cue has no server and collects nothing.
 
@@ -158,7 +164,7 @@ cue is an [Electron](https://www.electronjs.org/) app. Everything runs locally e
 - **Your mic ("You")** — `getUserMedia` → downsampled to 16 kHz audio → transcribed.
 - **Meeting audio ("Them")** — `getDisplayMedia` loopback capture of your system's output audio, kept on its own channel so cue knows *who* said what.
 
-Both audio streams are transcribed (OpenAI Whisper or Gemini) and fed, with an optional screenshot, to your AI model. Responses **stream** into the panel word-by-word.
+Both audio streams are transcribed locally with GigaAM or through the selected audio API and fed, with an optional screenshot, to your AI model. Local mode emits short speech chunks after pauses or approximately every 4.4 seconds during continuous speech, plus inference time. Responses **stream** into the panel word-by-word. Follow-up questions retain recent chat history. Stopping a recording drains pending audio before saving RAW and requesting a final analysis.
 
 **The invisibility** is enabled with Electron's `setContentProtection(true)`. On macOS this sets `NSWindowSharingNone`; on Windows 10 2004+ and Windows 11 it maps to `WDA_EXCLUDEFROMCAPTURE`. This asks the OS to exclude cue from compatible capture streams. It is **best-effort, not a guarantee**, so test the exact screen-sharing application and capture mode before relying on it.
 
@@ -181,7 +187,7 @@ You probably granted an older build. Because the app is ad-hoc signed, a rebuild
 Your API key is restricted. Most often it's an OpenAI **project key that only allows chat models** — it works for screen/coding help but 403s on transcription (Whisper). Fix: enable audio/Whisper on the key, use an unrestricted key, or add a Gemini key (cue falls back to it for transcription).
 
 **Listening does nothing / no transcript.**
-Check Settings shows a transcription-capable key (OpenAI with Whisper, or Gemini). Also make sure Screen Recording is granted (meeting audio needs it).
+For local transcription, use **Settings → Local GigaAM → Check**. Missing or damaged weights require installation of a complete model. No automatic cloud fallback occurs. For API transcription, check the selected audio model and key. Also check microphone/system-audio permissions.
 
 **cue shows up in my Zoom share.**
 Set Zoom's **Screen capture mode** to *"Advanced capture with window filtering"* (see Step 3). And remember: on macOS 15.4+ this can still fail — it's best-effort.
@@ -195,7 +201,7 @@ Run `xattr -cr /Applications/cue.app` in Terminal once (see Install → Option A
 
 - No accounts, no servers, no telemetry. cue collects nothing.
 - Your API keys live in a local file (`cue-data.json`) and are sent only to the official provider or custom destination you explicitly selected and trusted.
-- Screenshots and audio are sent to the configured LLM/STT destinations only when a feature runs, and are not stored by cue beyond the current session's transcript (kept in memory).
+- In local GigaAM mode, audio is processed by a private local worker and is never sent to the chat API. Recognized text is sent when chat, assistance or final analysis runs; screenshots are used by the existing screen features. Transcripts and errors are saved in the local session journal. Raw audio is not saved.
 
 ## Contributing
 

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 176" fill="none" color="#3C83F5">
+  <!-- Layers share one coordinate system so they can move independently. -->
+  <defs>
+    <linearGradient id="card-fill" x1="82" y1="39" x2="172" y2="123" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2C3648"/>
+      <stop offset="1" stop-color="#1A202C"/>
+    </linearGradient>
+    <linearGradient id="reply-fill" x1="43" y1="104" x2="132" y2="159" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#263041"/>
+      <stop offset="1" stop-color="#171D28"/>
+    </linearGradient>
+    <linearGradient id="card-edge" x1="74" y1="38" x2="187" y2="123" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D3E1F8" stop-opacity=".40"/>
+      <stop offset="1" stop-color="#D3E1F8" stop-opacity=".08"/>
+    </linearGradient>
+  </defs>
+  <g id="ambience" fill="none">
+    <ellipse cx="121" cy="91" rx="82" ry="66" stroke="#A9BBD7" stroke-opacity=".09"/>
+    <path d="M32 91C32 52 69 20 119 20M208 91C208 129 169 157 121 157" stroke="#A9BBD7" stroke-opacity=".12" stroke-linecap="round" stroke-dasharray="2 7"/>
+    <ellipse cx="126" cy="160" rx="64" ry="4" fill="#000" fill-opacity=".12"/>
+  </g>
+  <g id="voice-card">
+    <path d="M89 40H175C188 40 198 50 198 63V99C198 112 188 122 175 122H170L177 137L154 122H89C76 122 66 112 66 99V63C66 50 76 40 89 40Z" fill="#000" fill-opacity=".12" transform="translate(0 5)"/>
+    <path d="M89 38H175C188 38 198 48 198 61V97C198 110 188 120 175 120H170L177 135L154 120H89C76 120 66 110 66 97V61C66 48 76 38 89 38Z" fill="url(#card-fill)" stroke="url(#card-edge)" stroke-width="1.2"/>
+    <path d="M86 49H159" stroke="#D3E1F8" stroke-opacity=".12" stroke-linecap="round"/>
+  </g>
+  <g id="voice-wave" stroke="currentColor" stroke-width="5" stroke-linecap="round">
+    <path id="wave-1" d="M102 76V84" opacity=".42"/>
+    <path id="wave-2" d="M114 68V92" opacity=".70"/>
+    <path id="wave-3" d="M126 59V101"/>
+    <path id="wave-4" d="M138 65V95" opacity=".88"/>
+    <path id="wave-5" d="M150 71V89" opacity=".65"/>
+    <path id="wave-6" d="M162 77V83" opacity=".38"/>
+  </g>
+  <g id="reply-card">
+    <path d="M55 105H119C129 105 137 113 137 123V135C137 145 129 153 119 153H65L49 164L53 153C43 152 36 145 36 135V123C36 113 44 105 55 105Z" fill="#000" fill-opacity=".16" transform="translate(0 3)"/>
+    <path d="M55 102H119C129 102 137 110 137 120V132C137 142 129 150 119 150H65L49 161L53 150C43 149 36 142 36 132V120C36 110 44 102 55 102Z" fill="url(#reply-fill)" stroke="#B6C8E3" stroke-opacity=".24" stroke-width="1.2"/>
+  </g>
+  <g id="reply-dots" fill="#C4D5EF">
+    <circle id="dot-1" cx="69" cy="126" r="3" opacity=".80"/>
+    <circle id="dot-2" cx="86" cy="126" r="3" opacity=".55"/>
+    <circle id="dot-3" cx="103" cy="126" r="3" opacity=".30"/>
+  </g>
+  <g id="sparkles">
+    <path d="M192 21L194.8 28.2L202 31L194.8 33.8L192 41L189.2 33.8L182 31L189.2 28.2Z" fill="currentColor" opacity=".8"/>
+    <path d="M43 59L44.5 63.5L49 65L44.5 66.5L43 71L41.5 66.5L37 65L41.5 63.5Z" fill="#C4D5EF" opacity=".45"/>
+    <circle cx="210" cy="118" r="2.5" fill="currentColor" opacity=".38"/>
+    <circle cx="61" cy="28" r="2" fill="#C4D5EF" opacity=".3"/>
+  </g>
+</svg>

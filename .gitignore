@@ -7,3 +7,7 @@ native/systemaudio
 cue-data.json
 Созвоны/
 wikivibe-deploy-ssh.md
+.local-stt/
+__pycache__/
+docs/LOCAL-STT-QA.md
+docs/ASSISTANT-ACTIONS-QA.md

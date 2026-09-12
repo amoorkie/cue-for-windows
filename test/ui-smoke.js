@@ -1,17 +1,24 @@
 const path = require('path');
 const os = require('os');
+const fs = require('node:fs');
 const { app, BrowserWindow } = require('electron');
 
 app.setPath('userData', path.join(os.tmpdir(), 'cue-ui-smoke-' + process.pid));
+process.env.CUE_DOCUMENTS_DIR = path.join(os.tmpdir(), 'cue-ui-smoke-documents-' + process.pid);
+fs.mkdirSync(process.env.CUE_DOCUMENTS_DIR, { recursive: true });
+fs.writeFileSync(path.join(process.env.CUE_DOCUMENTS_DIR, '2026-09-12 — Проверка каталога.md'), '# Проверка каталога\n\n## Итог разговора\n\nСогласовали демонстрацию в пятницу.\n');
 
 require('../main');
 
 function waitForWindow(timeoutMs = 10000) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
-    const poll = () => {
+    const poll = async () => {
       const win = BrowserWindow.getAllWindows()[0];
-      if (win && !win.isDestroyed() && !win.webContents.isLoading()) return resolve(win);
+      if (win && !win.isDestroyed() && !win.webContents.isLoading()) {
+        const ready = await win.webContents.executeJavaScript("document.documentElement.dataset.ready === 'true'");
+        if (ready) return resolve(win);
+      }
       if (Date.now() - started > timeoutMs) return reject(new Error('Timed out waiting for the cue window.'));
       setTimeout(poll, 100);
     };
@@ -39,7 +46,7 @@ app.whenReady().then(async () => {
       ];
       const missing = required.filter((id) => !document.getElementById(id));
       const emptyChatInitially = document.getElementById('messages').childElementCount === 0;
-      const mainWindowSimplified = document.getElementById('search-btn').parentElement.id === 'panel-tools'
+      const mainWindowSimplified = document.getElementById('search-btn').parentElement.id === 'panel-tools-left'
         && document.getElementById('more-btn').parentElement.id === 'panel-tools'
         && !document.querySelector('#live-view .view-head')
         && !document.querySelector('#answer-view .view-head')
@@ -61,7 +68,7 @@ app.whenReady().then(async () => {
         && getComputedStyle(document.getElementById('appearance-animations')).appearance === 'none'
         && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).marginLeft === '0px'
         && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).position === 'absolute'
-        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).right === '10px'
+        && getComputedStyle(document.querySelector('.custom-select:has(#provider-select) .custom-select-chevron')).right === '12px'
         && getComputedStyle(document.getElementById('endpoint-trust-row')).alignItems === 'center'
         && parseFloat(getComputedStyle(document.getElementById('endpoint-note')).marginBottom) >= 5;
       document.getElementById('search-btn').click();
@@ -103,7 +110,9 @@ app.whenReady().then(async () => {
         && !document.getElementById('more-btn').classList.contains('on');
       document.getElementById('logo-btn').click();
       await new Promise((resolve) => setTimeout(resolve, 30));
-      const onboardingOpened = !document.getElementById('onboard-scrim').classList.contains('hidden')
+      const onboardingOpened = document.getElementById('onboard').getBoundingClientRect().right < document.getElementById('panel-wrap').getBoundingClientRect().left
+        && document.getElementById('catalog-scrim').classList.contains('hidden')
+        && !document.getElementById('onboard-scrim').classList.contains('hidden')
         && document.getElementById('logo-btn').classList.contains('on');
       const onboardingRussian = document.getElementById('ob-title').textContent === 'Добро пожаловать в Cue'
         && document.getElementById('ob-next').textContent === 'Далее'
@@ -147,7 +156,7 @@ app.whenReady().then(async () => {
         && document.querySelectorAll('#analysis-provider-card > .s-field').length === 3
         && document.querySelectorAll('#settings-provider-pane .settings-advanced').length === 1
         && getComputedStyle(document.querySelector('#settings-provider-pane .settings-advanced-body')).display === 'flex'
-        && providerSelect.options.length === 3
+        && [...providerSelect.options].filter((option) => !option.disabled).length === 3
         && !document.getElementById('stt-provider-select')
         && !document.getElementById('stt-api-key')
         && !document.getElementById('stt-base-url');
@@ -263,7 +272,7 @@ app.whenReady().then(async () => {
         quickLabelsRussian: document.querySelector('[data-mode="say"] span:last-child').textContent === 'Что ответить?'
           && document.querySelector('[data-mode="followup"] span:last-child').textContent === 'Что спросить дальше?'
           && document.querySelector('[data-mode="recap"] span:last-child').textContent === 'Краткое резюме',
-        toolbarActionsPolished: document.getElementById('copy-btn').parentElement.id === 'panel-tools-left'
+        toolbarActionsPolished: document.getElementById('copy-btn').parentElement.id === 'panel-tools'
           && document.getElementById('logo-btn').parentElement.id === 'panel-tools-left'
           && getComputedStyle(document.getElementById('panel-tools-left')).marginLeft === '0px'
           && document.getElementById('logo-btn').getBoundingClientRect().left >= document.getElementById('panel').getBoundingClientRect().left
@@ -292,7 +301,7 @@ app.whenReady().then(async () => {
           && document.getElementById('composer-dock').parentElement.id === 'panel'
           && document.getElementById('composer').parentElement.id === 'composer-dock'
           && document.getElementById('action-row').parentElement.id === 'composer-dock'
-          && getComputedStyle(document.getElementById('action-row')).flexWrap === 'nowrap'
+          && getComputedStyle(document.getElementById('action-row')).flexWrap === 'wrap'
           && getComputedStyle(document.getElementById('action-row')).gap === '8px'
           && getComputedStyle(document.querySelector('#action-row .act')).borderTopWidth === '1px'
           && document.getElementById('appearance-text-scale-value').textContent === '20 px',

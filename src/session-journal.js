@@ -64,6 +64,7 @@ class SessionJournal {
   async appendTurn(turn) {
     if (!this.data || !this.filePath) throw new Error('No active session journal.');
     this.data.transcript.push({ channel: turn.channel, speaker: turn.speaker || null, text: turn.text, ts: turn.ts });
+    this.data.transcript.sort((a, b) => a.ts - b.ts);
     this.data.updatedAt = new Date().toISOString();
     await this.persist();
   }

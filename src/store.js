@@ -34,6 +34,7 @@ const DEFAULTS = {
     panelOffsetY: 0,
     catalogTop: 14,
     settingsTop: 14,
+    panelPositions: {},
   },
   sttApiKeys: { openai: '', gemini: '', compatible: '' },
   models: {
@@ -44,6 +45,8 @@ const DEFAULTS = {
     compatible: { fast: '', smart: '' }
   },
   stt: {
+    mode: 'api',
+    local: { pythonPath: '', modelPath: '' },
     provider: 'openai',
     routes: {
       openai: { enabled: true, baseUrl: '', trustedBaseUrl: '', model: 'whisper-1', authMode: 'bearer' },
@@ -77,7 +80,18 @@ function normalizeAppearance(input) {
     const raw = Number(value[key]);
     return Math.round(Number.isFinite(raw) ? Math.min(max, Math.max(min, raw)) : fallback);
   };
+  const panelPositions = {};
+  for (const key of ['toolbar', 'panel', 'catalog', 'settings', 'onboard']) {
+    const position = value.panelPositions?.[key];
+    if (Number.isFinite(position?.x) && Number.isFinite(position?.y)) {
+      panelPositions[key] = {
+        x: Math.round(Math.max(-10000, Math.min(10000, position.x))),
+        y: Math.round(Math.max(-10000, Math.min(10000, position.y)))
+      };
+    }
+  }
   return {
+    panelPositions,
     language: value.language === 'en' ? 'en' : 'ru',
     windowDrag: value.windowDrag !== false,
     backgroundColor: color,
@@ -177,6 +191,8 @@ function load() {
   data.trustedBaseUrls = normalizeTrustedBaseUrls(data.trustedBaseUrls);
   data.stt.provider = STT_PROVIDERS.includes(data.stt && data.stt.provider) ? data.stt.provider : DEFAULTS.stt.provider;
   data.stt.routes = normalizeSttRoutes(data.stt && data.stt.routes, false);
+  data.stt.mode = data.stt.mode === 'local' ? 'local' : 'api';
+  data.stt.local = normalizeLocalStt(data.stt.local);
   if (data.sttModel) {
     data.stt.routes.openai.model = String(data.sttModel).trim() || data.stt.routes.openai.model;
     delete data.sttModel;
@@ -192,18 +208,19 @@ function load() {
       && !!(data.models.compatible && data.models.compatible[tier])
       && (!!data.apiKeys.compatible || data.authModes.compatible === 'none');
   };
-  if (!STT_PROVIDERS.includes(data.provider) || !hasUsableConfig(data.provider)) {
-    const active = STT_PROVIDERS.find(hasUsableConfig);
+  const allowedProviders = data.stt.mode === 'local' ? PROVIDERS : STT_PROVIDERS;
+  if (!allowedProviders.includes(data.provider) || !hasUsableConfig(data.provider)) {
+    const active = allowedProviders.find(hasUsableConfig);
     if (active) {
       data.provider = active;
       // We don't save() here so we don't spam disk, it will persist on next save.
     }
   }
-  if (!STT_PROVIDERS.includes(data.provider)) data.provider = 'openai';
-  data.stt.provider = data.provider;
+  if (!allowedProviders.includes(data.provider)) data.provider = 'openai';
+  data.stt.provider = STT_PROVIDERS.includes(data.provider) ? data.provider : 'openai';
   for (const provider of STT_PROVIDERS) {
     const route = data.stt.routes[provider];
-    route.enabled = provider === data.provider;
+    route.enabled = data.stt.mode !== 'local' && provider === data.provider;
     if (!route.enabled) continue;
     route.baseUrl = data.baseUrls[provider];
     route.trustedBaseUrl = data.trustedBaseUrls[provider];
@@ -214,6 +231,11 @@ function load() {
   return data;
 }
 function save(nextData) { fs.writeFileSync(FILE, JSON.stringify(nextData, null, 2)); }
+
+function normalizeLocalStt(value = {}) {
+  value = value && typeof value === 'object' ? value : {};
+  return { pythonPath: String(value.pythonPath || '').trim(), modelPath: String(value.modelPath || '').trim() };
+}
 
 module.exports = {
   getSettings() { return load(); },
@@ -238,8 +260,11 @@ module.exports = {
       const sttProvider = patch.stt && patch.stt.provider !== undefined ? patch.stt.provider : data.stt.provider;
       if (!STT_PROVIDERS.includes(sttProvider)) throw new Error('Unknown transcription provider: ' + sttProvider);
       next.stt = { ...data.stt, ...(patch.stt || {}), provider: sttProvider, routes: normalizeSttRoutes(mergedRoutes, true) };
+      if (!['api', 'local'].includes(next.stt.mode)) throw new Error('Неизвестный способ расшифровки.');
+      next.stt.local = normalizeLocalStt({ ...data.stt.local, ...(patch.stt.local || {}) });
       for (const provider of STT_PROVIDERS) {
         const route = next.stt.routes[provider];
+        if (next.stt.mode === 'local') route.enabled = false;
         if (route.enabled) validateTrustedDestination(route.baseUrl, route.trustedBaseUrl, provider + ' transcription Base URL');
         if (route.enabled && provider === 'compatible' && !route.baseUrl) {
           throw new Error('compatible transcription Base URL is required when the route is enabled.');
@@ -249,7 +274,9 @@ module.exports = {
     if (patch && patch.authModes) next.authModes = { ...patch.authModes, compatible: patch.authModes.compatible === 'none' ? 'none' : 'bearer' };
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'appearance')) next.appearance = normalizeAppearance({ ...data.appearance, ...(patch.appearance || {}) });
     const updated = deepMerge(data, next);
-    updated.appearance = normalizeAppearance(updated.appearance);
+    // Appearance is already a complete normalized snapshot; deep-merging it
+    // would resurrect cleared panel positions after a layout reset.
+    updated.appearance = next.appearance || normalizeAppearance(updated.appearance);
     save(updated);
     data = updated;
     return data;

@@ -204,6 +204,43 @@ test('streams through a local OpenAI-compatible chat endpoint without Authorizat
   assert.equal(request.body.stream, true);
 });
 
+test('preserves flat gateway balance errors and explains them in Russian', async () => {
+  let requests = 0;
+  await withLocalServer((req, res) => {
+    requests++;
+    res.writeHead(403, { 'Content-Type': 'application/json', 'x-request-id': 'balance-test' });
+    res.end(JSON.stringify({ code: 'INSUFFICIENT_BALANCE', message: 'Insufficient account balance' }));
+  }, async (baseURL) => {
+    const llm = createLLM(settings({ baseUrls: { openai: baseURL }, trustedBaseUrls: { openai: baseURL } }));
+    await assert.rejects(llm.stream({ system: 'test', turns: [{ role: 'user', text: 'hi' }], onToken: () => assert.fail('No tokens expected') }), error => {
+      assert.equal(error.status, 403);
+      assert.equal(error.code, 'INSUFFICIENT_BALANCE');
+      assert.equal(error.request_id, 'balance-test');
+      assert.match(error.message, /Недостаточно средств.*127\.0\.0\.1/);
+      assert.doesNotMatch(error.message, /no body|test-key/);
+      return true;
+    });
+  });
+  assert.equal(requests, 1, 'balance errors should not be retried');
+});
+
+test('preserves standard OpenAI authentication errors', async () => {
+  await withLocalServer((req, res) => {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { code: 'invalid_api_key', message: 'Invalid API key' } }));
+  }, async (baseURL) => {
+    const llm = createLLM(settings({ baseUrls: { openai: baseURL }, trustedBaseUrls: { openai: baseURL } }));
+    await assert.rejects(llm.stream({ system: 'test', turns: [], onToken: () => {} }), error => error.status === 401 && error.code === 'invalid_api_key' && /Invalid API key/.test(error.message));
+  });
+});
+
+test('keeps non-JSON gateway error explanations', async () => {
+  await withLocalServer((req, res) => { res.writeHead(403, { 'Content-Type': 'text/plain' }); res.end('Account disabled'); }, async (baseURL) => {
+    const llm = createLLM(settings({ baseUrls: { openai: baseURL }, trustedBaseUrls: { openai: baseURL } }));
+    await assert.rejects(llm.stream({ system: 'test', turns: [], onToken: () => {} }), error => error.status === 403 && /Account disabled/.test(error.message));
+  });
+});
+
 test('transcribes through an explicitly configured compatible STT endpoint without Authorization', async () => {
   let request = null;
   await withLocalServer((req, res) => {
@@ -237,6 +274,18 @@ test('transcribes through an explicitly configured compatible STT endpoint witho
   assert.equal(request.authorization, undefined);
   assert.match(request.contentType, /^multipart\/form-data; boundary=/);
   assert.match(request.body, /whisper-local/);
+});
+
+test('rejects empty and truncated chat streams instead of reporting success', async () => {
+  for (const choice of [{ delta: {}, finish_reason: 'stop' }, { delta: { content: 'Partial' }, finish_reason: 'length' }]) {
+    await withLocalServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.end('data: ' + JSON.stringify({ choices: [choice] }) + '\n\ndata: [DONE]\n\n');
+    }, async (baseURL) => {
+      const value = settings({ provider: 'openai', baseUrls: { openai: baseURL }, trustedBaseUrls: { openai: baseURL } });
+      await assert.rejects(createLLM(value).stream({ system: 'test', turns: [{ role: 'user', text: 'test' }], onToken: () => {} }), /пустой ответ|исчерпала лимит/);
+    });
+  }
 });
 
 test('transcribes through a compatible chat-audio route', async () => {
