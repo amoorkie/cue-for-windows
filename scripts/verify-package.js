@@ -15,7 +15,7 @@ find(path.resolve('dist'));
 assert.ok(archives.length, 'No packaged apps found');
 for (const archive of archives) {
   assert.equal(JSON.parse(asar.extractFile(archive, 'package.json')).version, expected);
-  for (const file of ['main.js', 'preload.js', 'src/prompts.js', 'src/llm.js', 'src/local-stt.js', 'renderer/index.html', 'renderer/renderer.js', 'renderer/styles.css']) {
+  for (const file of ['main.js', 'preload.js', 'src/prompts.js', 'src/llm.js', 'src/local-stt.js', 'src/windows.js', 'src/window-layout.js', 'src/transcript.js', 'src/session-journal.js', 'renderer/index.html', 'renderer/renderer.js', 'renderer/styles.css', 'renderer/workspace.css', 'renderer/panel-behavior.js', 'renderer/transcript-view.js']) {
     assert.ok(asar.extractFile(archive, path.normalize(file)).equals(fs.readFileSync(file)), `Source mismatch: ${file}`);
   }
   for (const file of ['worker.py', 'download.py']) {

@@ -320,3 +320,18 @@ test('transcribes through a compatible chat-audio route', async () => {
   assert.equal(request.body.model, 'gemini-3-flash');
   assert.equal(request.body.messages[0].content[1].type, 'input_audio');
 });
+
+
+test('stream metadata reports the API model independently of the requested alias', async () => {
+  await withLocalServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.end('data: ' + JSON.stringify({ model: 'actual-model-revision', choices: [{ delta: { content: 'hello' } }] }) + '\n\ndata: [DONE]\n\n');
+  }, async baseURL => {
+    const metadata = [];
+    const llm = createLLM(settings({ baseUrls: { openai: baseURL }, trustedBaseUrls: { openai: baseURL } }));
+    const requested = llm.model;
+    await llm.stream({ system: 'test', turns: [], onToken() {}, onMetadata: data => metadata.push(data) });
+    assert.equal(llm.model, requested);
+    assert.deepEqual(metadata, [{ model: 'actual-model-revision' }]);
+  });
+});

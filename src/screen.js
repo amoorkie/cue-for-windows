@@ -3,6 +3,7 @@
 const { desktopCapturer, screen } = require('electron');
 
 async function captureScreenshot(display = screen.getPrimaryDisplay()) {
+  if (!display) throw new Error('Выбранный монитор недоступен. Выберите экран для анализа.');
   const { width, height } = display.size;
   const scale = display.scaleFactor || 1;
   const sources = await desktopCapturer.getSources({
@@ -10,8 +11,9 @@ async function captureScreenshot(display = screen.getPrimaryDisplay()) {
     thumbnailSize: { width: Math.floor(width * scale), height: Math.floor(height * scale) }
   });
   if (!sources.length) return null;
-  // Capture the display containing the overlay (the primary display is the fallback).
-  const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+  // Never substitute another monitor: it can contain unrelated private content.
+  const src = sources.find((s) => String(s.display_id) === String(display.id));
+  if (!src) throw new Error('Выбранный монитор недоступен для захвата.');
   const img = src.thumbnail;
   if (!img || img.isEmpty()) return null;
   const size = img.getSize();

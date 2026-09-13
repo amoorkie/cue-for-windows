@@ -1,6 +1,21 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
+const surface = process.argv.find(arg => arg.startsWith('--cue-surface='))?.split('=')[1] || 'panel';
 
 contextBridge.exposeInMainWorld('cue', {
+  surface,
+  surfaceReady: () => ipcRenderer.send('surface:ready'),
+  windowOpen: key => ipcRenderer.invoke('window:open', key),
+  windowToggle: key => ipcRenderer.invoke('window:toggle', key),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowReset: () => ipcRenderer.invoke('window:reset'),
+  workspaceToggle: () => ipcRenderer.invoke('workspace:toggle'),
+  workspaceState: () => ipcRenderer.invoke('workspace:state'),
+  gestureStart: gesture => ipcRenderer.send('window:gesture-start', gesture),
+  gestureEnd: commit => ipcRenderer.send('window:gesture-end', commit),
+  displaysGet: () => ipcRenderer.invoke('displays:get'),
+  displaySelect: id => ipcRenderer.invoke('displays:select', id),
+  audioLevel: level => ipcRenderer.send('audio:level', level),
+  captureHealth: health => ipcRenderer.send('capture:health', health),
   setZoomLevel: (level) => webFrame.setZoomLevel(level),
   getZoomLevel: () => webFrame.getZoomLevel(),
   platform: process.platform,
@@ -30,7 +45,7 @@ contextBridge.exposeInMainWorld('cue', {
   openPane: (url) => ipcRenderer.send('open-pane', url),
   log: (msg) => ipcRenderer.send('log', msg),
   on: (channel, cb) => {
-    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'settings:open', 'diagnostics', 'recovery:available', 'session:loaded', 'local-stt:progress'];
+    const allowed = ['capture:state', 'capture:health', 'audio:level', 'llm:start', 'llm:metadata', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'transcript:updated', 'settings:open', 'settings:changed', 'diagnostics', 'recovery:available', 'session:loaded', 'local-stt:progress', 'workspace:state', 'surface:opened', 'surface:close', 'displays:changed'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, data) => cb(data));
   }

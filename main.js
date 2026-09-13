@@ -1,6 +1,7 @@
 const DEBUG = false; // Set to false to disable debug logging
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, screen, session, desktopCapturer, shell, Notification, dialog, powerSaveBlocker } = require('electron');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
 const store = require('./src/store');
 const { captureScreenshot } = require('./src/screen');
 const { createSTT } = require('./src/stt');
@@ -13,12 +14,15 @@ const { saveRecap, saveTranscriptFallback } = require('./src/recap-export');
 const { SessionJournal } = require('./src/session-journal');
 const { searchCatalog, buildCatalog } = require('./src/meeting-catalog');
 const { exportDocx, exportPdf } = require('./src/meeting-export');
+const { CueWindows } = require('./src/windows');
+const { TranscriptLedger, speechRange } = require('./src/transcript');
 
 const CUE_DOCUMENTS_DIRECTORY = process.env.CUE_DOCUMENTS_DIR || (process.platform === 'win32'
   ? 'A:\\Cue Documents'
   : path.join(app.getPath('documents'), 'Cue Documents'));
 
 let win = null;
+let windows = null;
 let tray = null;
 const startupWarnings = [];
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -29,7 +33,8 @@ if (!hasSingleInstanceLock) app.quit();
 const state = { capturing: false, busy: false, transcribing: { you: false, them: false } };
 let sttDisabled = false; // set when the key can't reach any speech model (stops retry spam)
 const buffers = { you: new SpeechBuffer(), them: new SpeechBuffer() };
-const transcript = []; // { channel, text, ts }
+const transcript = []; // Canonical turns used by the UI, prompts and exports.
+const transcriptLedger = new TranscriptLedger();
 const chatHistory = [];
 const localSTT = new LocalSTT({ root: path.join(app.getPath('userData'), 'gigaam') });
 let localSetupPromise = null;
@@ -52,8 +57,12 @@ let assistActive = false;
 let assistTimer = null;
 let assistQueued = false;
 let assistTurnCount = 0;
+let assistTriggerCount = 0;
 
-function send(channel, data) { if (win && !win.isDestroyed()) win.webContents.send(channel, data); }
+function send(channel, data) {
+  const chatOnly = channel.startsWith('llm:') || channel.startsWith('transcript') || channel === 'session:loaded';
+  windows?.send(channel, data, chatOnly ? ['panel'] : undefined);
+}
 function sendDiagnostics(patch) { send('diagnostics', patch); }
 function notify(title, body, filePath) {
   if (!Notification.isSupported()) return;
@@ -61,16 +70,6 @@ function notify(title, body, filePath) {
   if (filePath) notification.on('click', () => shell.showItemInFolder(filePath));
   notification.show();
 }
-function parseSpeakerTurns(channel, text) {
-  if (channel !== 'them') return [{ channel, speaker: 'Вы', text: String(text).trim(), ts: Date.now() }];
-  const lines = String(text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const parsed = lines.map((line) => {
-    const match = line.match(/^\[?SPEAKER[_ ]?(\d+)\]?\s*[:\-]?\s*(.*)$/i);
-    return match && match[2] ? { channel, speaker: `Клиент ${match[1]}`, text: match[2], ts: Date.now() } : null;
-  }).filter(Boolean);
-  return parsed.length ? parsed : [{ channel, speaker: 'Клиент 1', text: String(text).trim(), ts: Date.now() }];
-}
-
 function enableAutoLaunch() {
   if (process.platform !== 'win32' || !app.isPackaged) return;
   try {
@@ -93,28 +92,6 @@ function shouldCaptureScreen(mode, userText) {
   return SCREEN_HINTS.some((hint) => context.includes(hint));
 }
 
-const DUPLICATE_WINDOW_MS = 12000;
-function normalizeSpeech(text) {
-  return String(text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
-}
-function isDuplicateTurn(channel, text) {
-  const normalized = normalizeSpeech(text);
-  if (normalized.length < 6) return false;
-  const words = new Set(normalized.split(' '));
-  return transcript.slice(-12).some((previous) => {
-    if (Date.now() - previous.ts > DUPLICATE_WINDOW_MS) return false;
-    const previousNormalized = normalizeSpeech(previous.text);
-    if (normalized === previousNormalized) return true;
-    const previousWords = new Set(previousNormalized.split(' '));
-    if (words.size < 4 || previousWords.size < 4) return false;
-    let intersection = 0;
-    words.forEach((word) => { if (previousWords.has(word)) intersection += 1; });
-    const similarity = intersection / (words.size + previousWords.size - intersection);
-    const shorter = Math.min(normalized.length, previousNormalized.length);
-    if (channel === previous.channel && shorter >= 18 && (normalized.includes(previousNormalized) || previousNormalized.includes(normalized))) return true;
-    return similarity >= (channel === previous.channel ? 0.55 : 0.78);
-  });
-}
 function needsReply(text) {
   const value = String(text || '').trim().toLowerCase();
   return value.includes('?') || /^(what|how|where|when|why|who|which|can you|could you|should|will you|do you)\b/i.test(value) || /\b(please|explain|help|choose|decide|solve|answer|what do you think|how do you think)\b/i.test(value)
@@ -122,22 +99,24 @@ function needsReply(text) {
 }
 
 function getCaptureDisplay() {
-  if (win && !win.isDestroyed()) return screen.getDisplayMatching(win.getBounds());
-  return screen.getPrimaryDisplay();
+  const id = store.getSettings().captureDisplayId;
+  const display = id == null ? screen.getPrimaryDisplay() : screen.getAllDisplays().find(d => String(d.id) === id);
+  if (!display) throw new Error('Выбранный монитор отключён. Выберите экран для анализа.');
+  return display;
 }
 
 function showWindow() {
   if ((!win || win.isDestroyed()) && app.isReady()) createWindow();
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
-  win.show();
+  windows.showAll();
   win.focus();
   updateTrayMenu();
 }
 
 function toggleWindow() {
   if (!win || win.isDestroyed()) return;
-  if (win.isVisible()) win.hide();
+  if (!windows.hiddenToTray) windows.hideAll();
   else showWindow();
   updateTrayMenu();
 }
@@ -162,7 +141,7 @@ function updateTrayMenu() {
   const visible = !!(win && !win.isDestroyed() && win.isVisible());
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: visible ? 'Скрыть cue' : 'Показать cue', click: toggleWindow },
-    { label: 'Настройки', click: () => { showWindow(); send('settings:open'); } },
+    { label: 'Настройки', click: () => { showWindow(); windows.open('settings'); } },
     { type: 'separator' },
     { label: 'Выйти', click: () => requestQuit() }
   ]));
@@ -180,53 +159,22 @@ function createTray() {
 
 // -------- window --------
 function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay();
-  // A wide transparent host lets non-modal sidecars sit beside the centered
-  // assistant while the empty areas remain click-through.
-  const W = Math.min(1600, workArea.width);
-  const H = workArea.height - 12;
-  win = new BrowserWindow({
-    width: W,
-    height: H,
-    x: Math.round(workArea.x + (workArea.width - W) / 2),
-    y: workArea.y + 6,
-    frame: false,
-    transparent: true,
-    hasShadow: false,
-    resizable: true,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    fullscreenable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
+  windows = new CueWindows({ electron: require('electron'), store,
+    isQuitting: () => allowQuit,
+    onQuit: () => requestQuit(),
+    onReady: (key, window) => {
+      window.webContents.send('capture:state', { active: state.capturing, initial: true });
+      if (key === 'panel') {
+        window.webContents.send('session:loaded', { transcript: [...transcript] });
+        if (recoverySessions.length) window.webContents.send('recovery:available', { sessions: recoverySessions });
+        for (const message of startupWarnings.splice(0)) window.webContents.send('status', { message });
+      }
     }
   });
-
-  // Invisibility + overlay behavior. Set CUE_NO_PROTECT=1 to disable for debugging.
-  win.setContentProtection(!process.env.CUE_NO_PROTECT);            // excluded from screen capture (best-effort)
-  if (process.platform === 'darwin') {
-    win.setAlwaysOnTop(true, 'screen-saver', 1);
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    if (typeof win.setHiddenInMissionControl === 'function') win.setHiddenInMissionControl(true);
-  } else {
-    win.setAlwaysOnTop(true);
-  }
-
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-
-  win.webContents.on('did-finish-load', () => {
-    win.showInactive();
-    if (recoverySessions.length) send('recovery:available', { sessions: recoverySessions });
-    for (const message of startupWarnings.splice(0)) send('status', { message });
-  });
-  win.webContents.on('render-process-gone', (_e, d) => console.log('[cue] renderer gone', JSON.stringify(d)));
-  win.on('close', (event) => {
-    if (state.capturing && !allowQuit) { event.preventDefault(); void requestQuit(); }
-  });
-  win.on('query-session-end', (event) => {
+  win = windows.ensure('panel');
+  windows.ensure('toolbar');
+  if (!store.getSettings().onboarded) { windows.visible.add('onboard'); windows.ensure('onboard'); }
+  win.on('query-session-end', event => {
     if (state.capturing) { event.preventDefault(); notify('Cue recording active', 'Finish the recording to save the transcript.'); }
   });
   win.on('show', updateTrayMenu);
@@ -242,6 +190,8 @@ async function flushChannel(channel, options = {}) {
   const generation = options.generation === undefined ? captureGeneration : options.generation;
   const allowStopped = options.allowStopped === true;
   const { pcm, ts } = chunk;
+  const id = randomUUID();
+  const audioRange = speechRange(pcm, ts);
   if (rms16(pcm) < RMS_GATE) return; // silence gate
 
   state.transcribing[channel] = true;
@@ -266,22 +216,22 @@ async function flushChannel(channel, options = {}) {
       if ((!state.capturing && !allowStopped && finalizingGeneration !== generation) || generation !== captureGeneration) return;
       const text = res.text && res.text.trim();
       sendDiagnostics({ stt: 'ok', sttProvider: res.provider || null });
-      if (text && !isDuplicateTurn(channel, text)) {
-        for (const turn of parseSpeakerTurns(channel, text)) {
-        turn.ts = ts;
+      if (text) {
+        const changes = transcriptLedger.append({ id, channel, source: channel === 'them' ? 'system' : 'mic', text, ...audioRange });
+        transcript.splice(0, transcript.length, ...transcriptLedger.turns);
+        // Persist both recognitions even if one is classified as an echo later.
         try {
-          await sessionJournal.appendTurn(turn);
+          await sessionJournal.recordRecognition(transcriptLedger.source, transcript, transcriptLedger.revision);
           sendDiagnostics({ disk: 'ok' });
         } catch (error) {
           sendDiagnostics({ disk: 'error', diskError: error.message });
           await sessionJournal.appendError(error, 'journal-write').catch(() => {});
         }
-        transcript.push(turn);
-        transcript.sort((a, b) => a.ts - b.ts);
-        if (DEBUG) console.log(`[TRANSCRIPT] ${channel === 'you' ? 'You' : 'Them'}:`, turn.text);
-        send('transcript', turn);
+        send('transcript:updated', changes);
+        if (channel === 'them' && changes.upserts.some(t => t.id === id && needsReply(t.text))) {
+          assistTriggerCount++;
+          scheduleAutoAssist();
         }
-        if (channel === 'them' && needsReply(text)) scheduleAutoAssist();
       }
     } catch (e) {
       console.log('[stt] error', e && e.message);
@@ -307,9 +257,9 @@ function scheduleAutoAssist() {
   if (!assistActive || !state.capturing) return;
   assistTimer = setTimeout(() => {
     assistTimer = null;
-    if (!assistActive || !state.capturing || transcript.length <= assistTurnCount) return;
+    if (!assistActive || !state.capturing || assistTriggerCount <= assistTurnCount) return;
     if (state.busy) { assistQueued = true; return; }
-    assistTurnCount = transcript.length;
+    assistTurnCount = assistTriggerCount;
     runFeature('auto', '');
   }, ASSIST_IDLE_MS);
 }
@@ -319,16 +269,16 @@ function setAssistActive(active) {
   assistQueued = false;
   clearTimeout(assistTimer);
   assistTimer = null;
-  assistTurnCount = active ? Math.max(0, transcript.length - 1) : transcript.length;
+  assistTurnCount = active ? Math.max(0, assistTriggerCount - 1) : assistTriggerCount;
   send('status', { message: assistActive ? 'Помощь в реальном времени включена.' : 'Помощь в реальном времени выключена.' });
   if (assistActive) scheduleAutoAssist();
   return assistActive;
 }
 
 async function ensureRawTranscript(reason) {
-  if (sessionJournal.data && sessionJournal.data.rawFile && sessionJournal.data.rawTurnCount === transcript.length) return { filePath: sessionJournal.data.rawFile, fileName: path.basename(sessionJournal.data.rawFile) };
+  if (sessionJournal.data && sessionJournal.data.rawFile && sessionJournal.data.rawTranscriptRevision === transcriptLedger.revision) return { filePath: sessionJournal.data.rawFile, fileName: path.basename(sessionJournal.data.rawFile) };
   const raw = await saveTranscriptFallback({ outputDirectory: CUE_DOCUMENTS_DIRECTORY, transcript: [...transcript], reason });
-  await sessionJournal.mark(sessionJournal.data && sessionJournal.data.status || 'finalizing', { rawFile: raw.filePath, rawTurnCount: transcript.length });
+  await sessionJournal.mark(sessionJournal.data && sessionJournal.data.status || 'finalizing', { rawFile: raw.filePath, rawTurnCount: transcript.length, rawTranscriptRevision: transcriptLedger.revision });
   sendDiagnostics({ disk: 'ok' });
   return raw;
 }
@@ -427,6 +377,8 @@ async function setCapturing(active, options = {}) {
       sttDisabled = false;
       if (!options.resume) {
         transcript.length = 0;
+        transcriptLedger.reset();
+        assistTriggerCount = 0; assistTurnCount = 0;
         chatHistory.length = 0;
         await sessionJournal.start();
       } else {
@@ -487,6 +439,7 @@ function runFeature(mode, userText, options = {}) {
 }
 
 async function performFeature(mode, userText, options = {}) {
+  const requestId = randomUUID();
   if (DEBUG) console.log('[DEBUG MAIN] runFeature called:', { mode, userText, isBusy: state.busy });
   if (state.busy) return;
   const def = MODES[mode];
@@ -503,7 +456,8 @@ async function performFeature(mode, userText, options = {}) {
     const userBubble = userText || (language === 'ru' && def.userBubbleRu ? def.userBubbleRu : def.userBubble);
     if (DEBUG) console.log('[DEBUG MAIN] LLM settings loaded:', { provider: settings.provider, smart: settings.smart });
     const appendResponse = true;
-    send('llm:start', { userBubble, small: !!def.small, append: appendResponse, responseLabel: mode === 'recap' ? 'Итог' : 'Помощь' });
+    send('llm:start', { requestId, userBubble, small: !!def.small, append: appendResponse, mode,
+      provider: llm.provider, requestedModel: llm.model });
 
     if (!llm.ready) {
       if (DEBUG) console.log('[DEBUG MAIN] LLM not ready (missing key or model).');
@@ -530,6 +484,7 @@ async function performFeature(mode, userText, options = {}) {
           ? 'Screen capture needs permission — grant Screen Recording to cue in System Settings.'
           : 'Screen capture failed. Restart cue and try again.' + detail;
         send('status', { message });
+        throw new Error(message);
       }
       }
     }
@@ -547,10 +502,17 @@ async function performFeature(mode, userText, options = {}) {
     const languageInstruction = language === 'ru'
       ? '\nRespond in Russian unless the user explicitly asks for another language.'
       : '\nRespond in English unless the user explicitly asks for another language.';
+    let reportedModel = null;
     const fullText = await llm.stream({
       system: def.system + languageInstruction,
       turns: [...(mode === 'ask' || (userText && ['say', 'assist', 'followup'].includes(mode)) ? chatHistory.slice(-12) : []), { role: 'user', text: built }],
       imageDataUrl,
+      onMetadata: ({ model }) => {
+        if (model && model !== reportedModel) {
+          reportedModel = model;
+          send('llm:metadata', { requestId, reportedModel: model });
+        }
+      },
       onToken: (t) => { if (mode !== 'auto') send('llm:token', { text: t }); }
     });
     if (DEBUG) console.log('[DEBUG MAIN] Full LLM Output:\n', fullText);
@@ -596,12 +558,31 @@ async function performFeature(mode, userText, options = {}) {
 
 // -------- IPC --------
 ipcMain.handle('settings:get', () => store.getSettings());
+ipcMain.handle('displays:get', () => ({ selectedId: store.getSettings().captureDisplayId ?? String(screen.getPrimaryDisplay().id),
+  displays: screen.getAllDisplays().map(d => ({ id: String(d.id), label: d.label, width: d.size.width, height: d.size.height })) }));
+ipcMain.handle('displays:select', (e, id) => {
+  if (!windows?.isOwn(e) || !screen.getAllDisplays().some(d => String(d.id) === id)) throw new Error('Монитор недоступен.');
+  store.setSettings({ captureDisplayId: id });
+  windows.send('displays:changed');
+  return id;
+});
+ipcMain.on('audio:level', (e, level) => {
+  if (e.sender === win?.webContents && Number.isFinite(level)) windows?.send('audio:level', level, ['toolbar']);
+});
+ipcMain.on('capture:health', (e, health) => {
+  if (e.sender === win?.webContents) windows?.send('capture:health', health, ['toolbar']);
+});
 ipcMain.handle('settings:set', (_e, patch) => {
   if (patch.stt && JSON.stringify(patch.stt) !== JSON.stringify(store.getSettings().stt) && (state.capturing || finalizationPromise || captureTransition)) {
     throw new Error('Завершите запись перед сменой расшифровки.');
   }
   sttDisabled = false;
-  return store.setSettings(patch);
+  const safePatch = { ...patch };
+  delete safePatch.windowLayout;
+  delete safePatch.captureDisplayId;
+  const updated = store.setSettings(safePatch);
+  windows?.send('settings:changed', updated);
+  return updated;
 });
 ipcMain.handle('local-stt:check', async (_e, config) => {
   if (state.capturing || finalizationPromise || captureTransition || localSetupPromise) throw new Error('Дождитесь завершения записи или установки.');
@@ -645,7 +626,9 @@ ipcMain.handle('sessions:open', async (_e, filePath) => {
   chatHistory.length = 0;
   const loaded = await sessionJournal.load(filePath);
   transcript.length = 0;
-  transcript.push(...loaded.data.transcript);
+  transcript.push(...transcriptLedger.reset(loaded.data.sourceTranscript || loaded.data.transcript));
+  transcriptLedger.revision = loaded.data.transcriptRevision || 0;
+  assistTurnCount = assistTriggerCount = 0;
   const raw = await ensureRawTranscript('Восстановлено из незавершённой сессии.');
   return shell.openPath(raw.filePath);
 });
@@ -654,7 +637,9 @@ ipcMain.handle('sessions:summary', async (_e, filePath) => {
   chatHistory.length = 0;
   const loaded = await sessionJournal.load(filePath);
   transcript.length = 0;
-  transcript.push(...loaded.data.transcript);
+  transcript.push(...transcriptLedger.reset(loaded.data.sourceTranscript || loaded.data.transcript));
+  transcriptLedger.revision = loaded.data.transcriptRevision || 0;
+  assistTurnCount = assistTriggerCount = 0;
   send('session:loaded', { transcript: [...transcript] });
   await runFeature('recap', '');
   recoverySessions = await sessionJournal.listIncomplete();
@@ -666,7 +651,9 @@ ipcMain.handle('sessions:continue', async (_e, filePath) => {
   chatHistory.length = 0;
   const loaded = await sessionJournal.load(filePath);
   transcript.length = 0;
-  transcript.push(...loaded.data.transcript);
+  transcript.push(...transcriptLedger.reset(loaded.data.sourceTranscript || loaded.data.transcript));
+  transcriptLedger.revision = loaded.data.transcriptRevision || 0;
+  assistTurnCount = assistTriggerCount = 0;
   await setCapturing(true, { resume: true });
   send('session:loaded', { transcript: [...transcript] });
   return true;
@@ -699,12 +686,12 @@ function acceptPcm(channel, arrayBuffer) {
     if (state.capturing) void setCapturing(false, { rawOnly: true }).catch(() => {});
   }
 }
-ipcMain.on('mic:pcm', (_e, arrayBuffer) => acceptPcm('you', arrayBuffer));
-ipcMain.on('system:pcm', (_e, arrayBuffer) => acceptPcm('them', arrayBuffer));
-ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, { forward: true }); });
+ipcMain.on('mic:pcm', (e, arrayBuffer) => { if (e.sender === win?.webContents) acceptPcm('you', arrayBuffer); });
+ipcMain.on('system:pcm', (e, arrayBuffer) => { if (e.sender === win?.webContents) acceptPcm('them', arrayBuffer); });
+ipcMain.on('mouse:ignore', (e, v) => { if (windows?.isOwn(e)) BrowserWindow.fromWebContents(e.sender)?.setIgnoreMouseEvents(!!v, { forward: true }); });
 ipcMain.on('open-pane', (_e, url) => { shell.openExternal(url).catch(() => {}); });
-ipcMain.on('settings:open', () => send('settings:open'));
-ipcMain.on('window:hide-to-tray', () => { if (win && !win.isDestroyed()) { win.hide(); updateTrayMenu(); } });
+ipcMain.on('settings:open', () => windows?.open('settings'));
+ipcMain.on('window:hide-to-tray', () => { if (windows) { windows.hideAll(); updateTrayMenu(); } });
 ipcMain.on('log', (_e, msg) => console.log('[renderer]', msg));
 
 // -------- shortcuts --------
@@ -736,7 +723,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   // System-audio loopback for getDisplayMedia: hand back a screen source with 'loopback'
   // audio so the renderer can capture what's playing (Zoom/Meet) using cue's own grant.
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-    const display = getCaptureDisplay();
+    const display = screen.getPrimaryDisplay();
     desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       const source = sources.find((item) => String(item.display_id) === String(display.id)) || sources[0];
       if (source) callback({ video: source, audio: 'loopback' });
@@ -757,11 +744,13 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
+  windows?.finishGesture(false);
   localSTT.stop();
   globalShortcut.unregisterAll();
   if (tray) { tray.destroy(); tray = null; }
 });
 app.on('before-quit', (event) => {
+  if (!state.capturing && !finalizationPromise) allowQuit = true;
   if ((state.capturing || finalizationPromise) && !allowQuit) { event.preventDefault(); void requestQuit(); }
 });
 app.on('window-all-closed', () => app.quit());

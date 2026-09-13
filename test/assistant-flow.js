@@ -4,12 +4,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
-const { app, BrowserWindow, shell, Notification } = require('electron');
+const { app, BrowserWindow, shell, Notification, globalShortcut } = require('electron');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-actions-'));
 app.setPath('userData', root);
 process.env.CUE_DOCUMENTS_DIR = path.join(root, 'documents');
 shell.openPath = async () => '';
 Notification.isSupported = () => false;
+globalShortcut.register = () => true;
 let speech = '';
 let screenshots = 0;
 function mock(name, exports) {
@@ -55,7 +56,7 @@ server.listen(0, '127.0.0.1', async () => {
   try {
     await app.whenReady();
     let win;
-    await until(() => { win = BrowserWindow.getAllWindows()[0]; return win && !win.webContents.isLoading(); }, 'window');
+    await until(() => { win = BrowserWindow.getAllWindows().find(w => w.cueSurface === 'panel'); return win && !win.webContents.isLoading(); }, 'window');
     const js = (code) => win.webContents.executeJavaScript(code);
     await until(() => js('document.documentElement.dataset.ready === "true"'), 'renderer ready');
     await until(() => js(`document.querySelector('[data-mode="say"]').textContent.includes('Что ответить?')`), 'localized labels');
@@ -63,7 +64,7 @@ server.listen(0, '127.0.0.1', async () => {
     assert.equal(await js(`Array.from(document.querySelectorAll('#action-row .act')).every(el=>el.scrollWidth<=el.clientWidth)`), true, 'action labels fit');
     fs.mkdirSync(path.resolve('.local-stt/qa'), { recursive: true });
     fs.writeFileSync(path.resolve('.local-stt/qa/actions.png'), (await win.webContents.capturePage()).toPNG());
-    await js(`window.events=[]; for(const type of ['llm:done','llm:error','transcript','capture:state','recovery:available']) cue.on(type,data=>events.push({type,...data}));
+    await js(`window.events=[]; for(const type of ['llm:done','llm:error','transcript:updated','capture:state','recovery:available']) cue.on(type,data=>events.push({type,...data}));
       navigator.mediaDevices.getUserMedia=async()=>{throw new Error('fixture');};
       navigator.mediaDevices.getDisplayMedia=async()=>{throw new Error('fixture');}; true;`);
     const completed = () => js(`events.filter(e=>e.type==='llm:done'||e.type==='llm:error').length`);
@@ -83,9 +84,14 @@ server.listen(0, '127.0.0.1', async () => {
       return { file: path.join(dir, file), data: JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) };
     };
     await js('cue.captureToggle()');
+    await js('cue.workspaceToggle()');
+    assert.equal(win.isVisible(), false);
     await feed('расскажи что такое оптимистичные и пессимистичные блокировки');
     await action('assist');
     assert.match(requests.at(-1).messages.at(-1).content, /оптимистичные/,'manual help flushes pending mic speech');
+    assert.equal(journal().data.status, 'recording', 'hidden panel keeps recording');
+    await js('cue.workspaceToggle()');
+    assert.equal(win.isVisible(), true);
     assert.match(requests.at(-1).messages[0].content, /explicit request for help/);
     await action('say', 'Объясни разницу с примером');
     assert.match(requests.at(-1).messages.at(-1).content, /Explicit typed request.*Объясни/);
@@ -97,6 +103,9 @@ server.listen(0, '127.0.0.1', async () => {
     assert.equal(journal().data.recapFile, null);
     assert.equal(screenshots, 0, 'summary does not send an unrelated screenshot');
     assert.equal(requests.at(-1).messages.length, 2, 'summary excludes private assistant suggestions');
+    speech = 'Как выбрать подходящий способ блокировки?';
+    await js(`cue.systemPcm(Uint8Array.from(atob('${pcm.toString('base64')}'), c=>c.charCodeAt(0)).buffer)`);
+    await until(() => journal().data.transcript.length === 2, 'remote question');
     const beforeAuto = await completed();
     await js(`document.getElementById('auto-assist-btn').click()`);
     await until(async () => (await completed()) > beforeAuto, 'automatic help');
@@ -108,7 +117,7 @@ server.listen(0, '127.0.0.1', async () => {
     await js('cue.captureToggle()');
     await until(async () => (await completed()) > beforeStop, 'failed final recap');
     await until(() => journal().data.status === 'failed', 'failed journal');
-    assert.equal(journal().data.transcript.length, 2, 'stop drains tail');
+    assert.equal(journal().data.transcript.length, 3, 'stop drains tail');
     assert.match(fs.readFileSync(journal().data.rawFile, 'utf8'), /к четвергу/);
     await until(() => js(`document.querySelectorAll('.recovery-item').length === 1`), 'immediate retry card');
     failRecap = false;
@@ -120,7 +129,7 @@ server.listen(0, '127.0.0.1', async () => {
     await feed('Следующий созвон назначен на понедельник');
     const rawRequests = requests.length;
     await js(`document.getElementById('finish-raw-btn').click()`);
-    await until(() => journal().data.status === 'completed' && journal().data.rawTurnCount === 3, 'RAW after resume');
+    await until(() => journal().data.status === 'completed' && journal().data.rawTurnCount === 4, 'RAW after resume');
     assert.notEqual(journal().data.rawFile, oldRaw);
     assert.match(fs.readFileSync(journal().data.rawFile, 'utf8'), /понедельник/);
     assert.equal(requests.length, rawRequests, 'RAW never calls AI');
