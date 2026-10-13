@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('cue', {
   windowOpen: key => ipcRenderer.invoke('window:open', key),
   windowToggle: key => ipcRenderer.invoke('window:toggle', key),
   windowClose: () => ipcRenderer.invoke('window:close'),
+  // Передаём явное действие копирования в системный буфер через main.
+  copyText: text => ipcRenderer.invoke('clipboard:copy-text', text),
   windowReset: () => ipcRenderer.invoke('window:reset'),
   workspaceToggle: () => ipcRenderer.invoke('workspace:toggle'),
   workspaceState: () => ipcRenderer.invoke('workspace:state'),

@@ -1,9 +1,11 @@
-// Native panel integration with synthetic transcript/LLM events. No audio or API calls.
+// Настоящие окна с синтетическими событиями речи/ИИ; микрофон и внешние API не используются.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, clipboard, screen, globalShortcut } = require('electron');
+// В CI не полагаемся на наличие аппаратного GPU у виртуальной машины.
+if (process.env.CI) app.disableHardwareAcceleration();
 globalShortcut.register = () => true; // Do not claim the running app's shortcuts.
 const { wait, until, surface, js, screenshot } = require('./electron-helpers');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-ui-'));
@@ -36,7 +38,18 @@ app.whenReady().then(async () => {
       { id: 't3', channel: 'you', text: 'Сначала проверим основные сценарии, затем подготовим демонстрацию.', ts: 7000, endTs: 10000 }
     ];
     panel.webContents.send('session:loaded', { transcript: turns });
-    await until(() => js(panel, `document.querySelectorAll('.transcript-row').length === 2`), 'grouped transcript');
+    await until(() => js(panel, `document.getElementById('transcript-preview-text').textContent.includes('Сначала проверим')`), 'latest speech preview');
+    assert.equal(await js(panel, `document.querySelectorAll('.transcript-row').length`), 0, 'main panel has no hidden full transcript');
+    await js(panel, `document.getElementById('input').value='Мой черновик'; document.getElementById('input').dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('transcript-preview').click()`);
+    const transcriptWindow = await surface('transcript');
+    transcriptWindow.webContents.send('session:loaded', { transcript: turns });
+    const publish = (channel, payload) => { panel.webContents.send(channel, payload); transcriptWindow.webContents.send(channel, payload); };
+    await until(() => js(transcriptWindow, `document.querySelectorAll('.transcript-row').length === 2`), 'grouped transcript in its own window');
+    assert.notEqual(panel.id, transcriptWindow.id);
+    assert.ok(panel.isVisible());
+    assert.equal(await js(panel, `document.getElementById('answer-view').hidden`), false);
+    assert.equal(await js(panel, `document.getElementById('input').value`), 'Мой черновик');
+    assert.equal(await js(transcriptWindow, `getComputedStyle(document.getElementById('panel-wrap')).display`), 'none');
     panel.webContents.send('llm:start', { requestId: 'r1', userBubble: 'Предложи порядок проверки', requestedModel: 'model-alias', provider: 'fixture', mode: 'assist', append: true });
     panel.webContents.send('llm:metadata', { requestId: 'r1', reportedModel: 'gpt-5.6-sol' });
     panel.webContents.send('llm:token', { text: '**Начните с переноса окон.** Проверьте каждый монитор отдельно и перенос всей группы.\n\nЗатем проверьте расшифровку:\n- раскрытие до поля ввода;\n- сохранение позиции при прокрутке;\n- подписи говорящих при эхе.' });
@@ -48,7 +61,8 @@ app.whenReady().then(async () => {
     assert.equal(await js(panel, `getComputedStyle(document.querySelector('.user-bubble')).boxShadow`), 'none');
     assert.equal(await js(panel, `getComputedStyle(document.querySelector('.user-bubble')).userSelect`), 'text');
     assert.ok(await js(panel, `parseFloat(getComputedStyle(document.querySelector('.user-bubble')).fontSize) < parseFloat(getComputedStyle(document.querySelector('.ai-text')).fontSize)`));
-    images.push(await screenshot(panel, '01-compact'));
+    images.push(await screenshot(panel, '01-latest-phrase'));
+    images.push(await screenshot(transcriptWindow, '02-transcript-window'));
     const diagnosticsFit = () => js(panel, `(() => {
       const header=document.getElementById('panel-topbar').getBoundingClientRect();
       return [...document.querySelectorAll('#capture-diagnostics .diag-pill, #screen-select')].every(el=>{
@@ -63,57 +77,86 @@ app.whenReady().then(async () => {
     assert.equal(await diagnosticsFit(), true, 'diagnostics stay visible at minimum panel width');
     images.push(await screenshot(panel, '01-narrow'));
     panel.setBounds(fullBounds); await wait(100);
-    await js(panel, `document.getElementById('input').value='Мой черновик'; document.getElementById('input').dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('transcript-toggle').click()`);
-    assert.equal(await js(panel, `document.getElementById('transcript-toggle').getAttribute('aria-expanded')`), 'false');
-    assert.equal(await diagnosticsFit(), true, 'collapsing the transcript keeps all diagnostics visible');
-    images.push(await screenshot(panel, '02-collapsed'));
-    await js(panel, `document.getElementById('transcript-expand').click()`);
-    assert.equal(await js(panel, `document.getElementById('answer-view').hidden`), true);
     assert.equal(await js(panel, `document.getElementById('input').value`), 'Мой черновик');
-    assert.ok(await js(panel, `document.getElementById('composer').getBoundingClientRect().bottom <= document.getElementById('panel').getBoundingClientRect().bottom`));
     const longTurns = Array.from({ length: 80 }, (_, i) => ({ id: 'long-' + i, channel: i % 2 ? 'you' : 'them', text: 'Обсуждаем следующий этап проекта и фиксируем договорённости. '.repeat(3), ts: 20000 + i * 5000, endTs: 21000 + i * 5000 }));
-    panel.webContents.send('transcript:updated', { upserts: longTurns, removed: [] });
+    publish('transcript:updated', { upserts: longTurns, removed: [] });
     await wait(100);
-    await js(panel, `document.getElementById('live-transcript').scrollTop=0`);
+    await js(transcriptWindow, `document.getElementById('live-transcript').scrollTop=0`);
     await wait(100);
-    panel.webContents.send('transcript:updated', { upserts: [{ id: 'latest', channel: 'them', text: 'Последняя реплика без потери прокрутки.', ts: 500000 }], removed: [] });
+    publish('transcript:updated', { upserts: [{ id: 'latest', channel: 'them', text: 'Последняя реплика без потери прокрутки.', ts: 500000 }], removed: [] });
     await wait(100);
-    assert.equal(await js(panel, `document.getElementById('live-transcript').scrollTop`), 0);
-    images.push(await screenshot(panel, '03-expanded'));
+    assert.equal(await js(transcriptWindow, `document.getElementById('live-transcript').scrollTop`), 0);
+    assert.match(await js(panel, `document.getElementById('transcript-preview-text').textContent`), /Последняя реплика/);
+    images.push(await screenshot(transcriptWindow, '03-transcript-reading'));
     const previousClipboard = clipboard.readText();
     try {
       await js(panel, `document.getElementById('copy-btn').click()`);
-      await until(() => clipboard.readText().includes('Предложи порядок проверки'), 'copy hidden chat');
+      await until(() => clipboard.readText().includes('Предложи порядок проверки'), 'copy speech with chat');
       assert.match(clipboard.readText(), /Последняя реплика/);
+      transcriptWindow.focus();
+      await wait(100);
+      await js(transcriptWindow, `document.getElementById('transcript-copy').click()`);
+      await until(() => clipboard.readText().includes('Последняя реплика') && !clipboard.readText().includes('Предложи порядок проверки'), 'copy only speech');
     } finally { clipboard.writeText(previousClipboard); }
+    const chatCards = await js(panel, `document.querySelectorAll('.ai-message').length`);
     panel.webContents.send('llm:start', { requestId: 'auto', mode: 'auto', requestedModel: 'fixture', append: true });
     panel.webContents.send('llm:done', { suppress: true });
     await wait(100);
-    assert.equal(await js(panel, `document.querySelectorAll('.ai-message').length`), 1, 'suppressed auto removes the entire card');
-    assert.equal(await js(panel, `document.getElementById('chat-unread').classList.contains('hidden')`), true, 'suppressed auto has no unread badge');
+    assert.equal(await js(panel, `document.querySelectorAll('.ai-message').length`), chatCards, 'suppressed auto removes its card');
     panel.webContents.send('llm:start', { requestId: 'auto-visible', mode: 'auto', requestedModel: 'fixture', append: true });
     panel.webContents.send('llm:token', { text: 'Проверьте микрофон.' });
     panel.webContents.send('llm:done', {});
     await wait(80);
-    assert.equal(await js(panel, `document.getElementById('panel').dataset.transcriptState`), 'full', 'automatic answer preserves reading');
-    assert.equal(await js(panel, `document.getElementById('chat-unread').classList.contains('hidden')`), false);
-    await js(panel, `document.getElementById('live-transcript').scrollTop=180`);
+    assert.ok(transcriptWindow.isVisible());
+    assert.equal(await js(transcriptWindow, `document.getElementById('live-transcript').scrollTop`), 0, 'AI response preserves reading');
+    await js(transcriptWindow, `document.getElementById('live-transcript').scrollTop=180`);
     await wait(80);
-    await js(panel, `document.getElementById('transcript-toggle').click()`);
-    panel.webContents.send('transcript:updated', { upserts: [{ id: 'collapsed-new', channel: 'you', text: 'Новая реплика при свёрнутом блоке.', ts: 510000 }], removed: [] });
+    await js(transcriptWindow, `document.getElementById('transcript-close').click()`);
+    await until(() => !transcriptWindow.isVisible(), 'transcript hidden');
+    publish('transcript:updated', { upserts: [{ id: 'closed-new', channel: 'you', text: 'Новая реплика при закрытом окне.', ts: 510000 }], removed: [] });
     await wait(80);
-    await js(panel, `document.getElementById('transcript-toggle').click()`);
+    await js(panel, `document.getElementById('transcript-preview').click()`);
     await wait(80);
-    assert.equal(await js(panel, `document.getElementById('live-transcript').scrollTop`), 180, 'collapsed updates preserve the reading position');
-    await js(panel, `document.getElementById('transcript-expand').click()`);
+    assert.equal(await js(transcriptWindow, `document.getElementById('live-transcript').scrollTop`), 180, 'reopening retains scroll');
+    assert.match(await js(transcriptWindow, `document.getElementById('live-transcript').textContent`), /при закрытом окне/);
+    publish('transcript:updated', { removed: ['closed-new'], upserts: [{ id: 'latest', channel: 'them', text: 'Исправленная последняя реплика.', ts: 500000 }] });
+    await until(() => js(panel, `document.getElementById('transcript-preview-text').textContent.includes('Исправленная')`), 'corrected preview');
     panel.webContents.send('llm:start', { requestId: 'shortcut', mode: 'assist', requestedModel: 'fixture', append: true });
     panel.webContents.send('llm:done', { suppress: true });
     await wait(80);
-    assert.equal(await js(panel, `document.getElementById('panel').dataset.transcriptState`), 'compact', 'manual shortcut returns to chat');
-    await js(panel, `document.getElementById('transcript-toggle').focus()`);
+    assert.ok(transcriptWindow.isVisible(), 'manual assistance keeps transcript open');
+    await js(transcriptWindow, `document.getElementById('transcript-latest').click()`);
+    await until(() => js(transcriptWindow, `document.getElementById('transcript-latest').classList.contains('hidden')`), 'follow latest speech');
+    await js(transcriptWindow, 'cue.windowClose()');
+    await until(() => !transcriptWindow.isVisible(), 'close before keyboard opening');
+    await js(panel, `document.getElementById('transcript-preview').focus()`);
     panel.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Space' });
     panel.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Space' });
-    await until(() => js(panel, `document.getElementById('panel').dataset.transcriptState === 'collapsed'`), 'keyboard accordion');
+    await until(() => transcriptWindow.isVisible(), 'keyboard opens transcript');
+    transcriptWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    transcriptWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await until(() => !transcriptWindow.isVisible(), 'Escape closes transcript');
+    await js(panel, `document.getElementById('transcript-preview').click()`);
+    // Анимация не подтверждает исправность устройств: ошибки звука проверяем отдельно.
+    await js(panel, `navigator.mediaDevices.getUserMedia=async()=>{throw new Error('fixture');}; navigator.mediaDevices.getDisplayMedia=async()=>{throw new Error('fixture');}; true`);
+    publish('capture:state', { active: true, initial: true });
+    await wait(120);
+    publish('capture:health', { mic: 'ok', system: 'ok' });
+    await until(() => js(panel, `getComputedStyle(document.querySelector('.transcript-wave i')).animationName === 'transcriptRecording'`), 'recording animation');
+    images.push(await screenshot(panel, '04-recording-preview'));
+    await js(panel, `cue.settingsSet({appearance:{animations:false}})`);
+    await until(() => js(panel, `getComputedStyle(document.querySelector('.transcript-wave i')).animationName === 'none'`), 'disabled animation');
+    await js(panel, `cue.settingsSet({appearance:{animations:true}})`);
+    panel.webContents.debugger.attach('1.3');
+    await panel.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    await until(() => js(panel, `getComputedStyle(document.querySelector('.transcript-wave i')).animationName === 'none'`), 'reduced motion');
+    await panel.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] });
+    panel.webContents.debugger.detach();
+    publish('capture:health', { mic: 'error', system: 'error' });
+    await until(() => js(panel, `document.getElementById('transcript-preview-status').textContent === 'Проверьте звук'`), 'audio warning');
+    assert.equal(await js(panel, `getComputedStyle(document.querySelector('.transcript-wave i')).animationName`), 'none');
+    publish('capture:state', { active: false });
+    await until(() => js(panel, `document.getElementById('transcript-preview-status').textContent === 'Запись остановлена'`), 'recording stopped');
 
     await js(panel, `cue.windowOpen('settings')`);
     const settings = await surface('settings');
@@ -154,10 +197,10 @@ app.whenReady().then(async () => {
     assert.equal(await js(onboard, `document.getElementById('ob-title').textContent`), 'Добро пожаловать в Cue');
     await js(toolbar, 'cue.workspaceToggle()'); await wait(100);
     assert.ok(toolbar.isVisible());
-    assert.ok([panel, settings, catalog, onboard].every(w=>!w.isVisible()));
+    assert.ok([panel, transcriptWindow, settings, catalog, onboard].every(w=>!w.isVisible()));
     await js(toolbar, 'cue.workspaceToggle()'); await wait(100);
-    assert.ok([panel, settings, catalog, onboard].every(w=>w.isVisible()));
-    console.log(JSON.stringify({ pass:true, checks:['native surfaces','screen selection','grouped transcript','three states','keyboard','draft','scroll retention','hidden text copy','model metadata','compact messages','silent auto','provider trust','shared appearance','catalog','onboarding','workspace visibility'], images }));
+    assert.ok([panel, transcriptWindow, settings, catalog, onboard].every(w=>w.isVisible()));
+    console.log(JSON.stringify({ pass:true, checks:['native surfaces','screen selection','grouped transcript','latest phrase and separate window','recording animation','reduced motion','audio warning','keyboard','draft','scroll retention','hidden text copy','model metadata','compact messages','silent auto','provider trust','shared appearance','catalog','onboarding','workspace visibility'], images }));
     app.emit('will-quit'); app.exit(0);
   } catch (error) { console.error(error.stack); app.emit('will-quit'); app.exit(1); }
 });

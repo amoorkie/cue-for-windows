@@ -1,5 +1,5 @@
-// All geometry is in Electron screen DIP coordinates, including negative origins.
-const SURFACES = ['panel', 'toolbar', 'settings', 'catalog', 'onboard'];
+// Координаты окон заданы в DIP Electron, включая отрицательные начала мониторов.
+const SURFACES = ['panel', 'toolbar', 'transcript', 'settings', 'catalog', 'onboard'];
 const PADDING = 24;
 
 function normalizeLayout(value) {
@@ -19,6 +19,7 @@ function normalizeLayout(value) {
   return { version: 2, windows };
 }
 
+// Добавляем новые окна к прежней раскладке, сохраняя размеры и смещения остальных.
 function legacyLayout(appearance, primary) {
   const a = appearance;
   const w = primary.workArea;
@@ -31,6 +32,7 @@ function legacyLayout(appearance, primary) {
   const positions = {
     toolbar: { x: w.x + (w.width - 140) / 2, y: w.y + 46, width: 140, height: 40 },
     panel: { x: w.x + (w.width - panelWidth) / 2, y: w.y + 98 + (a.panelOffsetY || 0), width: panelWidth, height: a.panelHeight || 540 },
+    transcript: { x: Math.min(w.x + w.width - 536, w.x + (w.width + panelWidth) / 2 + 16), y: w.y + 98, width: 520, height: Math.min(640, w.height - 80) },
     settings: { x: hostX + hostWidth - 40 - legacySettingsWidth, y: w.y + 6 + Math.max(40, a.settingsTop || 14), width: settingsWidth, height: a.settingsHeight || 690 },
     catalog: { x: hostX + 40, y: w.y + 6 + Math.max(40, a.catalogTop || 14), width: catalogWidth, height: a.catalogHeight || 690 },
     onboard: { x: hostX + 40, y: w.y + 46, width: settingsWidth, height: 560 }

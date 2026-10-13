@@ -1,6 +1,6 @@
 {
   "name": "cue",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Open-source cross-platform AI overlay with screen, microphone, and system-audio input.",
   "license": "GPL-3.0-or-later",
   "author": "cue",

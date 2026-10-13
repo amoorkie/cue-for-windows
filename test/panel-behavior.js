@@ -1,10 +1,12 @@
-// Real native windows + production IPC, deterministic DIP cursor positions.
-// Physical pointer dragging, mixed-DPI handoff and disconnect remain device checks.
+// Настоящие окна и IPC, заданные координаты курсора в DIP.
+// Физическое перетаскивание, смена DPI и отключение дисплея требуют проверки на устройстве.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, screen, globalShortcut } = require('electron');
+// Виртуальному runner достаточно программного рендеринга для проверки окон и IPC.
+if (process.env.CI) app.disableHardwareAcceleration();
 const { wait, until, surface, js } = require('./electron-helpers');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-windows-'));
 app.setPath('userData', root);
@@ -19,6 +21,8 @@ app.whenReady().then(async () => {
     const panel = await surface('panel'), toolbar = await surface('toolbar');
     await js(panel, `cue.windowOpen('settings')`);
     const settings = await surface('settings');
+    await js(panel, `cue.windowOpen('transcript')`);
+    const transcript = await surface('transcript');
     const drag = async (win, dx, dy, options={}) => {
       await js(win, `cue.gestureStart(${JSON.stringify(options)})`); await wait(35);
       cursor = { x:cursor.x+dx, y:cursor.y+dy }; await wait(50);
@@ -33,9 +37,16 @@ app.whenReady().then(async () => {
     const moved = panel.getBounds();
     panel.webContents.reload(); await surface('panel');
     assert.deepEqual(panel.getBounds(), moved, 'renderer reload preserves native geometry');
-    const beforeGroup = [panel, toolbar, settings].map(w=>w.getBounds());
+    const transcriptBefore = transcript.getBounds();
+    await drag(transcript, 25, 15);
+    assert.equal(transcript.getBounds().x, transcriptBefore.x + 25);
+    assert.equal((await js(panel, 'cue.settingsGet()')).windowLayout.windows.transcript.x, transcript.getBounds().x);
+    const transcriptSize = transcript.getBounds();
+    await drag(transcript, 60, 0, { edge: 'right' });
+    assert.equal(transcript.getBounds().width, transcriptSize.width + 60);
+    const beforeGroup = [panel, toolbar, settings, transcript].map(w=>w.getBounds());
     await drag(toolbar, 45, 30, {group:true});
-    [panel, toolbar, settings].forEach((w,i)=>{
+    [panel, toolbar, settings, transcript].forEach((w,i)=>{
       assert.equal(w.getBounds().x,beforeGroup[i].x+45); assert.equal(w.getBounds().y,beforeGroup[i].y+30);
     });
     await js(panel, 'cue.settingsSet({appearance:{windowDrag:false}})');

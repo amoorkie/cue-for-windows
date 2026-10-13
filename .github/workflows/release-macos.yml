@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Параллельные версии не смешивают артефакты; публикация ждёт обе платформы.
+concurrency:
+  group: cue-installers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
@@ -23,14 +28,28 @@ jobs:
             platform: macos
             command: npm run dist:mac
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Закрепляем проверенные Actions, чтобы тег действия не менял сборку.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test
+      # На Windows проверяем интерфейс и запись; macOS проверяет оба упакованных приложения.
+      - name: Verify transcript UI
+        if: runner.os == 'Windows'
+        run: npm run test:ui
+      - name: Verify meeting capture and recovery
+        if: runner.os == 'Windows'
+        run: npm run test:assistant
+      - name: Verify independent windows
+        if: runner.os == 'Windows'
+        run: npm run test:behavior
       - name: Verify tag matches package version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -39,7 +58,7 @@ jobs:
         run: ${{ matrix.command }}
       - name: Verify packaged source and Python workers
         run: node scripts/verify-package.js
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cue-${{ matrix.platform }}-installers
           path: |
@@ -52,11 +71,14 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: cue-*-installers
           path: installers

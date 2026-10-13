@@ -1,10 +1,12 @@
-// Real main process, IPC and renderer; isolated files, deterministic STT/API fixtures.
+// Проверяем настоящий main, IPC и renderer с изолированными файлами и тестовыми STT/API.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { app, BrowserWindow, shell, Notification, globalShortcut } = require('electron');
+// В CI проверяем окна с программным рендерингом, без требования аппаратного GPU.
+if (process.env.CI) app.disableHardwareAcceleration();
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-actions-'));
 app.setPath('userData', root);
 process.env.CUE_DOCUMENTS_DIR = path.join(root, 'documents');
@@ -92,6 +94,19 @@ server.listen(0, '127.0.0.1', async () => {
     assert.equal(journal().data.status, 'recording', 'hidden panel keeps recording');
     await js('cue.workspaceToggle()');
     assert.equal(win.isVisible(), true);
+    // Окно, открытое посреди настоящего main-пайплайна, получает накопленную историю.
+    const { surface, js: windowJs } = require('./electron-helpers');
+    const requestsBeforeWindow = requests.length;
+    await js(`document.getElementById('transcript-preview').click()`);
+    const transcriptWindow = await surface('transcript');
+    await until(() => windowJs(transcriptWindow, `document.getElementById('live-transcript').textContent.includes('оптимистичные')`), 'late transcript snapshot');
+    assert.equal(requests.length, requestsBeforeWindow, 'opening transcript does not request AI');
+    assert.equal((await js('cue.captureState()')).active, true, 'opening transcript keeps recording');
+    transcriptWindow.webContents.reload();
+    await surface('transcript');
+    await until(() => windowJs(transcriptWindow, `document.getElementById('live-transcript').textContent.includes('оптимистичные')`), 'reloaded transcript snapshot');
+    await windowJs(transcriptWindow, 'cue.windowClose()');
+    assert.equal((await js('cue.captureState()')).active, true, 'closing transcript keeps recording');
     assert.match(requests.at(-1).messages[0].content, /explicit request for help/);
     await action('say', 'Объясни разницу с примером');
     assert.match(requests.at(-1).messages.at(-1).content, /Explicit typed request.*Объясни/);
@@ -136,6 +151,25 @@ server.listen(0, '127.0.0.1', async () => {
     assert.equal(await js(`document.getElementById('send-btn').classList.contains('busy')`), false, 'RAW does not lock composer');
     await action('say', 'Объясни короче');
     assert.match(requests.at(-1).messages.at(-1).content, /Объясни короче/);
+    // При заполнении диска запуск отклоняется, но предыдущая расшифровка остаётся доступной.
+    const disk = require('node:fs/promises');
+    const originalWrite = disk.writeFile;
+    const turnsBeforeFailure = await js(`document.getElementById('transcript-preview-text').textContent`);
+    disk.writeFile = async (...args) => {
+      if (String(args[0]).startsWith(process.env.CUE_DOCUMENTS_DIR)) {
+        throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+      }
+      return originalWrite(...args);
+    };
+    try {
+      await assert.rejects(js('cue.captureToggle()'), /Нет места для сохранения встречи/);
+      assert.equal((await js('cue.captureState()')).active, false);
+      assert.equal(await js(`document.getElementById('transcript-preview-text').textContent`), turnsBeforeFailure);
+    } finally { disk.writeFile = originalWrite; }
+    await js('cue.captureToggle()');
+    assert.equal((await js('cue.captureState()')).active, true, 'retry after ENOSPC starts recording');
+    await js('cue.captureFinishRaw()');
+    await until(() => journal().data.status === 'failed', 'empty retry stopped');
     console.log(JSON.stringify({ pass: true, checks: ['pending mic help', 'typed mode request', 'chat refinement', 'followup focus', 'live recap status', 'no recap screenshot', 'no private chat in summary', 'silent auto', '503 and immediate retry', 'stop tail', 'RAW after resume', 'RAW no AI or stuck composer'], root }));
     server.close(); app.emit('will-quit'); app.exit(0);
   } catch (error) { console.error(error.stack); server.close(); app.emit('will-quit'); app.exit(1); }

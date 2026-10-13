@@ -32,7 +32,12 @@ class CueWindows {
       if (!key) return;
       const window = this.windows.get(key);
       window.cueReady = true;
-      if (this.shouldShow(key)) window.showInactive();
+      if (this.shouldShow(key)) {
+        window.showInactive();
+        // Окно, открытое пользователем, получает фокус после первой загрузки.
+        if (window.cueFocusOnReady) window.focus();
+      }
+      window.cueFocusOnReady = false;
       this.broadcastState();
       this.onReady?.(key, window);
     });
@@ -78,6 +83,7 @@ class CueWindows {
     return window;
   }
 
+  // Повторное открытие использует то же окно, его текст, прокрутку и геометрию.
   open(key) {
     const window = this.ensure(key);
     if (!window) return false;
@@ -85,6 +91,7 @@ class CueWindows {
     this.visible.add(key);
     this.workspaceHidden = false;
     this.hiddenToTray = false;
+    if (!window.cueReady) window.cueFocusOnReady = true;
     this.syncVisibility();
     if (window.cueReady) {
       if (!alreadyVisible) window.webContents.send('surface:opened');
