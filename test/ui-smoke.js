@@ -138,6 +138,10 @@ app.whenReady().then(async () => {
     await until(() => !transcriptWindow.isVisible(), 'Escape closes transcript');
     await js(panel, `document.getElementById('transcript-preview').click()`);
     // Анимация не подтверждает исправность устройств: ошибки звука проверяем отдельно.
+    // Виртуальный runner может уменьшать движение по умолчанию; оба режима задаём явно.
+    panel.webContents.debugger.attach('1.3');
+    await panel.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+    await until(() => js(panel, `document.documentElement.dataset.animations === 'on'`), 'animation test precondition');
     await js(panel, `navigator.mediaDevices.getUserMedia=async()=>{throw new Error('fixture');}; navigator.mediaDevices.getDisplayMedia=async()=>{throw new Error('fixture');}; true`);
     publish('capture:state', { active: true, initial: true });
     await wait(120);
@@ -147,7 +151,6 @@ app.whenReady().then(async () => {
     await js(panel, `cue.settingsSet({appearance:{animations:false}})`);
     await until(() => js(panel, `getComputedStyle(document.querySelector('.transcript-wave i')).animationName === 'none'`), 'disabled animation');
     await js(panel, `cue.settingsSet({appearance:{animations:true}})`);
-    panel.webContents.debugger.attach('1.3');
     await panel.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     await until(() => js(panel, `getComputedStyle(document.querySelector('.transcript-wave i')).animationName === 'none'`), 'reduced motion');
     await panel.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] });
