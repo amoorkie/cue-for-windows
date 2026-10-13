@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
 
 function fileTimestamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, '0');
@@ -17,6 +18,7 @@ function safeError(error) {
   };
 }
 
+// Журнал сохраняет расшифровку для восстановления встречи после сбоя.
 class SessionJournal {
   constructor(outputDirectory) {
     if (!outputDirectory) throw new Error('outputDirectory is required.');
@@ -28,6 +30,7 @@ class SessionJournal {
     this.writeChain = Promise.resolve();
   }
 
+  // Новая встреча заменяет текущую только после успешного сохранения на диск.
   async start(startedAt = new Date()) {
     await fs.mkdir(this.sessionsDirectory, { recursive: true });
     const base = `${fileTimestamp(startedAt)} — session`;
@@ -42,6 +45,7 @@ class SessionJournal {
         throw error;
       }
     }
+    const previous = { filePath: this.filePath, data: this.data };
     this.filePath = candidate;
     this.data = {
       version: 1,
@@ -52,7 +56,13 @@ class SessionJournal {
       errors: [],
       recapFile: null
     };
-    await this.persist();
+    try {
+      await this.persist();
+    } catch (error) {
+      this.filePath = previous.filePath;
+      this.data = previous.data;
+      throw error;
+    }
     return this.filePath;
   }
 
@@ -96,14 +106,24 @@ class SessionJournal {
     await this.persist();
   }
 
+  // Сначала пишем временный файл: ENOSPC не должен обнулить сохранённую встречу.
   async persist() {
     if (!this.data || !this.filePath) return;
     const snapshot = JSON.stringify(this.data, null, 2) + '\n';
-    this.writeChain = this.writeChain.then(async () => {
-      await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-      await fs.writeFile(this.filePath, snapshot, 'utf8');
+    const filePath = this.filePath;
+    const write = this.writeChain.then(async () => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+      try {
+        await fs.writeFile(temporaryPath, snapshot, 'utf8');
+        await fs.rename(temporaryPath, filePath);
+      } finally {
+        await fs.unlink(temporaryPath).catch(() => {});
+      }
     });
-    await this.writeChain;
+    // Ошибку получает вызывающий код, но очередь допускает повтор после освобождения места.
+    this.writeChain = write.catch(() => {});
+    await write;
   }
 
   async recoverLatest() {

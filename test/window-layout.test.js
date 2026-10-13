@@ -29,3 +29,13 @@ test('layout normalization rejects non-finite geometry and unknown surfaces', ()
   const result = normalizeLayout({ version: 2, windows: { panel: { x: Infinity, y: 1, width: 2, height: 3 }, arbitrary: { x: 1, y: 1, width: 5, height: 6 } } });
   assert.deepEqual(result.windows, {});
 });
+
+// Старая раскладка дополняется окном расшифровки, не меняя уже сохранённые окна.
+test('transcript geometry is independent and survives layout normalization', () => {
+  const defaults = legacyLayout({ panelWidth: 624, panelHeight: 540 }, displays[0]);
+  assert.equal(defaults.transcript.width, 568);
+  const saved = { ...defaults.transcript, x: -1300, y: 100, displayId: '2' };
+  const normalized = normalizeLayout({ version: 2, windows: { panel: defaults.panel, transcript: saved } });
+  assert.deepEqual(normalized.windows.transcript, saved);
+  assert.deepEqual(normalized.windows.panel, defaults.panel);
+});

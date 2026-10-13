@@ -1,5 +1,5 @@
 const DEBUG = false; // Set to false to disable debug logging
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, screen, session, desktopCapturer, shell, Notification, dialog, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, screen, session, desktopCapturer, shell, Notification, dialog, powerSaveBlocker, clipboard } = require('electron');
 const path = require('path');
 const { randomUUID } = require('node:crypto');
 const store = require('./src/store');
@@ -23,6 +23,8 @@ const CUE_DOCUMENTS_DIRECTORY = process.env.CUE_DOCUMENTS_DIR || (process.platfo
 
 let win = null;
 let windows = null;
+// Новому окну расшифровки передаём последнее состояние звуковых каналов.
+let currentCaptureHealth = { mic: 'idle', system: 'idle' };
 let tray = null;
 const startupWarnings = [];
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -60,8 +62,10 @@ let assistTurnCount = 0;
 let assistTriggerCount = 0;
 
 function send(channel, data) {
-  const chatOnly = channel.startsWith('llm:') || channel.startsWith('transcript') || channel === 'session:loaded';
-  windows?.send(channel, data, chatOnly ? ['panel'] : undefined);
+  // Чат остаётся в основной панели; обе расшифровки получают одинаковые изменения.
+  const targets = channel.startsWith('llm:') ? ['panel']
+    : channel.startsWith('transcript') || channel === 'session:loaded' ? ['panel', 'transcript'] : undefined;
+  windows?.send(channel, data, targets);
 }
 function sendDiagnostics(patch) { send('diagnostics', patch); }
 function notify(title, body, filePath) {
@@ -164,8 +168,11 @@ function createWindow() {
     onQuit: () => requestQuit(),
     onReady: (key, window) => {
       window.webContents.send('capture:state', { active: state.capturing, initial: true });
-      if (key === 'panel') {
+      if (key === 'panel' || key === 'transcript') {
         window.webContents.send('session:loaded', { transcript: [...transcript] });
+        window.webContents.send('capture:health', currentCaptureHealth);
+      }
+      if (key === 'panel') {
         if (recoverySessions.length) window.webContents.send('recovery:available', { sessions: recoverySessions });
         for (const message of startupWarnings.splice(0)) window.webContents.send('status', { message });
       }
@@ -354,10 +361,8 @@ function openRecapInMarkEdit(filePath) {
   shell.openPath(filePath).catch((error) => console.log('[recap] open error', error && error.message));
 }
 
-// -------- capture toggle --------
-// Mic + system audio are both captured in the RENDERER (getUserMedia for the mic,
-// getDisplayMedia loopback for system audio) so they run inside cue's own process
-// and use cue's own Screen-Recording grant — no separate helper binary to authorize.
+// Микрофон и системный звук захватывает renderer в процессе Cue.
+// Запись включается только после сохранения журнала; сбой оставляет предыдущий текст в UI.
 async function setCapturing(active, options = {}) {
   if (captureTransition) throw new Error('Дождитесь запуска записи.');
   if (active && (finalizationPromise || state.busy)) throw new Error('Дождитесь ответа или сохранения предыдущей встречи.');
@@ -368,10 +373,13 @@ async function setCapturing(active, options = {}) {
       send('status', { message: 'Загружаю локальную GigaAM…' });
       await localSTT.prepare(store.getSettings().stt.local);
     }
-    state.capturing = active;
-    if (active) captureGeneration += 1;
     const stoppedGeneration = active ? null : captureGeneration;
     if (active) {
+      // Проверяем запись на диск до очистки предыдущей встречи и запуска аудио.
+      if (!options.resume) await sessionJournal.start();
+      else await sessionJournal.mark('recording', { recapFile: null, completedAt: null });
+      state.capturing = true;
+      captureGeneration += 1;
       if (powerBlockerId === null) powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
       finalizingGeneration = null;
       sttDisabled = false;
@@ -380,9 +388,6 @@ async function setCapturing(active, options = {}) {
         transcriptLedger.reset();
         assistTriggerCount = 0; assistTurnCount = 0;
         chatHistory.length = 0;
-        await sessionJournal.start();
-      } else {
-        await sessionJournal.mark('recording', { recapFile: null, completedAt: null });
       }
       sendDiagnostics({ disk: 'ok', stt: 'idle', queued: 0 });
       buffers.you.clear(); buffers.them.clear();
@@ -390,6 +395,7 @@ async function setCapturing(active, options = {}) {
       assistQueued = false;
       startFlushLoop();
     } else {
+      state.capturing = false;
       finalizingGeneration = stoppedGeneration;
       stopFlushLoop();
       if (powerBlockerId !== null && powerSaveBlocker.isStarted(powerBlockerId)) powerSaveBlocker.stop(powerBlockerId);
@@ -420,6 +426,11 @@ async function setCapturing(active, options = {}) {
       if (powerBlockerId !== null && powerSaveBlocker.isStarted(powerBlockerId)) powerSaveBlocker.stop(powerBlockerId);
       powerBlockerId = null;
       send('capture:state', { active: false });
+    }
+    if (error.code === 'ENOSPC' || error.code === 'EDQUOT') {
+      error.message = `Нет места для сохранения встречи в «${CUE_DOCUMENTS_DIRECTORY}». Освободите место на этом диске и повторите включение записи.`;
+      sendDiagnostics({ disk: 'error', diskError: error.message });
+      send('status', { message: error.message });
     }
     throw error;
   } finally { captureTransition = false; }
@@ -570,7 +581,9 @@ ipcMain.on('audio:level', (e, level) => {
   if (e.sender === win?.webContents && Number.isFinite(level)) windows?.send('audio:level', level, ['toolbar']);
 });
 ipcMain.on('capture:health', (e, health) => {
-  if (e.sender === win?.webContents) windows?.send('capture:health', health, ['toolbar']);
+  if (e.sender !== win?.webContents) return;
+  currentCaptureHealth = { mic: health.mic, system: health.system };
+  windows?.send('capture:health', currentCaptureHealth, ['toolbar', 'transcript']);
 });
 ipcMain.handle('settings:set', (_e, patch) => {
   if (patch.stt && JSON.stringify(patch.stt) !== JSON.stringify(store.getSettings().stt) && (state.capturing || finalizationPromise || captureTransition)) {
@@ -614,6 +627,12 @@ ipcMain.handle('capture:finish-raw', async () => {
   return raw;
 });
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
+// Копирование из окна Cue не зависит от ограничений браузерного clipboard API и фокуса.
+ipcMain.handle('clipboard:copy-text', (event, text) => {
+  if (!windows?.isOwn(event) || typeof text !== 'string' || text.length > 8 * 1024 * 1024) throw new Error('Не удалось скопировать текст.');
+  clipboard.writeText(text);
+  return true;
+});
 ipcMain.handle('sessions:list', () => sessionJournal.listIncomplete());
 ipcMain.handle('sessions:dismiss', async (_e, filePath) => {
   await sessionJournal.dismiss(filePath);

@@ -63,3 +63,47 @@ test('dismisses a recovery card without deleting its raw journal', async (t) => 
   assert.equal(saved.status, 'dismissed');
   assert.equal(saved.transcript[0].text, 'Сохранённый RAW');
 });
+
+// Имитируем заполненный диск: частичная запись не должна повредить последнюю сохранённую версию.
+test('keeps saved transcript intact after ENOSPC and retries on the same journal', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cue-session-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const journal = new SessionJournal(root);
+  const filePath = await journal.start();
+  await journal.appendTurn({ channel: 'you', text: 'Сохранённая фраза', ts: 1 });
+  const before = await fs.readFile(filePath, 'utf8');
+  const writeFile = fs.writeFile.bind(fs);
+  const failure = t.mock.method(fs, 'writeFile', async (target, ...args) => {
+    if (target.startsWith(root)) {
+      await writeFile(target, '{');
+      throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+    }
+    return writeFile(target, ...args);
+  });
+  await assert.rejects(journal.appendTurn({ channel: 'them', text: 'Фраза в памяти', ts: 2 }), { code: 'ENOSPC' });
+  assert.equal(await fs.readFile(filePath, 'utf8'), before);
+  assert.deepEqual(await fs.readdir(journal.sessionsDirectory), [path.basename(filePath)]);
+  failure.mock.restore();
+  await journal.persist();
+  assert.equal(JSON.parse(await fs.readFile(filePath, 'utf8')).transcript.length, 2);
+});
+
+// Неудачное начало встречи сохраняет прежнюю сессию и допускает повторный запуск.
+test('restores previous journal after failed start and permits another start', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cue-session-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const journal = new SessionJournal(root);
+  const previousPath = await journal.start(new Date('2026-10-06T10:00:00Z'));
+  await journal.appendTurn({ channel: 'you', text: 'Предыдущая встреча', ts: 1 });
+  const previousData = journal.data;
+  const failure = t.mock.method(fs, 'writeFile', async () => {
+    throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+  });
+  await assert.rejects(journal.start(new Date('2026-10-06T11:00:00Z')), { code: 'ENOSPC' });
+  assert.equal(journal.filePath, previousPath);
+  assert.equal(journal.data, previousData);
+  failure.mock.restore();
+  const nextPath = await journal.start(new Date('2026-10-06T11:00:00Z'));
+  assert.notEqual(nextPath, previousPath);
+  assert.equal(JSON.parse(await fs.readFile(nextPath, 'utf8')).status, 'recording');
+});

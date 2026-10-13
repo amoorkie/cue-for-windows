@@ -1,4 +1,4 @@
-/* cue renderer — UI state, mic capture, IPC, streaming render. */
+/* Интерфейс Cue, захват микрофона, обмен с main и потоковые ответы ИИ. */
 (function () {
   const { icon } = window.ICONS;
   const cue = window.cue; // exposed by preload
@@ -524,7 +524,6 @@
     const raw = aiEl.dataset.raw || '';
     aiEl.innerHTML = renderMarkdown(raw);
     if (aiEl.parentElement.dataset.status !== 'error') aiEl.parentElement.dataset.status = 'done';
-    if (transcriptView.state === 'full') $('#chat-unread').classList.remove('hidden');
     aiEl = null; caretEl = null;
   }
 
@@ -534,7 +533,6 @@
   function runMode(mode, text) {
     if (busy) return;
     setBusy(true);
-    if (transcriptView.state === 'full') transcriptView.setState('compact');
     cue.ask({ mode, text: text || '' });
   }
 
@@ -623,6 +621,7 @@
     $('#search-btn').classList.toggle('on', next.visible.includes('catalog') && !next.workspaceHidden);
     $('#more-btn').classList.toggle('on', next.visible.includes('settings') && !next.workspaceHidden);
     $('#logo-btn').classList.toggle('on', next.visible.includes('onboard') && !next.workspaceHidden);
+    $('#transcript-preview').setAttribute('aria-expanded', String(next.visible.includes('transcript') && !next.workspaceHidden && !next.hiddenToTray));
   }
   cue.on('workspace:state', syncWorkspace);
 
@@ -723,6 +722,7 @@
   });
 
   function updateCaptureHealth() {
+    transcriptView.health(captureHealth);
     const ready = captureWanted && Object.values(captureHealth).every((value) => value === 'ok');
     const warning = captureWanted && Object.values(captureHealth).includes('error');
     const indicator = $('#live-dot');
@@ -934,8 +934,7 @@
     transcriptView.update({ upserts: transcript || [] });
   });
   cue.on('llm:start', meta => {
-    // Global shortcuts arrive from main without going through runMode().
-    if (meta.mode !== 'auto' && transcriptView.state === 'full') transcriptView.setState('compact');
+    // Ответы ИИ обновляют чат, не скрывая отдельное окно расшифровки.
     if (!meta.append) clearMessages();
     if (meta.userBubble) addUserBubble(meta.userBubble);
     startAi(!!meta.small, meta);

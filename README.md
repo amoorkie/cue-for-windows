@@ -8,7 +8,7 @@
 
 ### [⬇ Скачать Cue для Windows](../../releases/latest) · [⬇ Скачать Cue для macOS](../../releases/latest)
 
-[Все релизы](../../releases) · Версия исходников: **0.1.17** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
+[Все релизы](../../releases) · Версия исходников: **0.1.18** · Windows 10 (2004+) / Windows 11 · macOS (Intel и Apple Silicon)
 
 <img src="docs/tutorial.png" width="620" alt="cue first-run tutorial" />
 
@@ -29,7 +29,7 @@
 
 cue floats a small glass panel on top of everything. It takes **three separate inputs** — your **screen**, your **microphone**, and your **meeting audio** (what the other person says) — and uses an AI model to help you in real time.
 
-Панели можно независимо переносить между мониторами; `Shift` перемещает всю видимую группу. Экран для анализа выбирается отдельно в заголовке чата. Расшифровка сворачивается в строку, показывает компактный конспект или раскрывается до поля ввода. В ответах ИИ указаны модель и режим. [Поведение окон, расшифровки и автоматических подписей говорящих](docs/WORKSPACE.md).
+Панели можно независимо переносить между мониторами; `Shift` перемещает всю видимую группу. Экран для анализа выбирается отдельно в заголовке чата. Основная панель показывает последнюю реплику с индикатором записи; нажатие открывает полную расшифровку в отдельном окне. Закрытие окна сохраняет запись и прокрутку. В ответах ИИ указаны модель и режим. [Поведение окон, расшифровки и автоматических подписей говорящих](docs/WORKSPACE.md).
 
 Во время записи в панели доступен живой конспект с каналами «Вы» и «Собеседник». «Помоги» даёт разовый ответ; отдельная «Автопомощь» предлагает ответы на вопросы собеседника автоматически. «Что ответить?» отвечает на последний неразрешённый вопрос любого участника. Текст в поле ввода имеет приоритет при нажатии быстрых действий. «Что спросить дальше?» предлагает вопросы. «Краткое резюме» во время записи показывает промежуточный итог в чате и оставляет встречу активной.
 
@@ -55,7 +55,7 @@ It's a copilot for **live meetings** ("what do I say to that?") and **coding pro
 
 ### Windows 10 (2004+) and Windows 11
 
-Download the latest installer from [Releases](../../releases), run `cue-0.1.0-windows-x64.exe`, and follow the setup wizard. The installer is currently unsigned, so Windows may show a SmartScreen warning.
+Download the latest installer from [Releases](../../releases), run `cue-<version>-windows-x64.exe`, and follow the setup wizard. The installer is currently unsigned, so Windows may show a SmartScreen warning.
 
 To run from source:
 
