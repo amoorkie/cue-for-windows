@@ -82,7 +82,8 @@ server.listen(0, '127.0.0.1', async () => {
     };
     const journal = () => {
       const dir = path.join(root, 'documents', 'Sessions');
-      const file = fs.readdirSync(dir).sort().at(-1);
+      // Во время атомарной записи рядом лежит .tmp; читаем только завершённые JSON-журналы.
+      const file = fs.readdirSync(dir).filter(name => name.endsWith('.json')).sort().at(-1);
       return { file: path.join(dir, file), data: JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) };
     };
     await js('cue.captureToggle()');
